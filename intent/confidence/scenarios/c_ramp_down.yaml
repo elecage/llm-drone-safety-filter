@@ -1,0 +1,20 @@
+name: c_ramp_down
+description: |
+  c 1.0 → 0.0 10s 선형 ramp (|\dot c| = 0.1/s, dot_c_max=0.833/s 미발동 케이스).
+  변화율 제한기 통과 시 \tilde c = raw c 정합. r(\tilde c)·r_dot 시변 trajectory 검증.
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 5.0
+    type: constant
+    value: 1.0
+    note: c=1 hold (warmup)
+  - duration_s: 10.0
+    type: ramp
+    from: 1.0
+    to: 0.0
+    note: 10s 동안 1→0 ramp (rate 0.1/s)
+  - duration_s: 15.0
+    type: constant
+    value: 0.0
+    note: c=0 hold (B2 최대 변조)

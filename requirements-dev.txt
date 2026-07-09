@@ -1,0 +1,17 @@
+# Project Python dev deps (installed into .venv by scripts/install_jetson.sh).
+# Project policy: all Python in this repo runs under the venv at .venv/.
+# Runtime ROS 2 Python deps (rclpy, numpy, scipy, yaml, ...) come from ROS 2's
+# system install and are visible to the venv via --system-site-packages.
+
+pytest>=7.0
+
+# STT host pipeline (ADR-0015) — host macOS only
+sounddevice>=0.4
+pynput>=1.7
+requests>=2.28
+
+# TTS (영어/cross-platform 옵션 — 한국어는 macOS say, ADR-0016 D2 amendment)
+piper-tts
+
+# §8 figure 생성 (paper/figures/scripts/make_figures.py — per-trial CSV → PDF/PNG)
+matplotlib>=3.5

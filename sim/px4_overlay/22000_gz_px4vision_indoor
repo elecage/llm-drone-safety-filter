@@ -1,0 +1,79 @@
+#!/bin/sh
+#
+# @name Gazebo PX4 Vision (indoor, sensor-trimmed, conservative tuning)
+#
+# @type Quadrotor
+#
+# Forked from 4001_gz_x500 (보수적 베이스) + 4006_gz_px4vision 모델 dir 재사용.
+#
+# 채택 이유: 4006_gz_px4vision 원본의 공격적 MPC 튜닝(MPC_Z_VEL_I_ACC=3 등)이
+# 우리 gz model과 안 맞아 hover PID oscillation 발생 (ADR-0012 §Incident).
+# 4001_gz_x500은 *rc.mc_defaults 그대로 + CA_ROTOR + MPC_THR_HOVER만* 설정해
+# 안정 hover를 입증한 minimal config. 그 패턴 그대로 px4vision 모델에 적용.
+#
+# CA_ROTOR 위치: 4001은 (±0.13, ±0.22) (실제 x500 SDF (±0.174, ±0.174)와도
+# 어긋나지만 안정). 4006 px4vision의 (±1, ±1) 정규화는 우리 모델 SDF (±0.0935,
+# ±0.107)와 mixer 정합 안 됨. 본 airframe은 px4vision 실제 SDF 좌표 그대로 사용.
+#
+# MPC_THR_HOVER: gz motor model + SIM_GZ_EC_MIN/MAX 클램핑 영향까지 고려해야
+# 정확. 1차 추정(선형 0.43)은 motorConstant × ω² 비선형성을 무시 → controller
+# steady-state error로 45 cm undershoot 발생. 실측 VFR_HUD throttle 59%가
+# equilibrium → 0.59 채택. 정밀 1차원 계산:
+#   per-rotor thrust at cmd c: F = motorConstant × (c × maxRotVel)² × ...
+#   (단 SIM_GZ_EC_MIN 150 클램핑·THR_MDL_FAC 0 default 등이 추가 변형)
+# 실측이 가장 신뢰할 만하므로 empirical 0.59 사용.
+
+. ${R}etc/init.d/rc.mc_defaults
+
+PX4_SIMULATOR=${PX4_SIMULATOR:=gz}
+PX4_GZ_WORLD=${PX4_GZ_WORLD:=default}
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=px4vision}
+
+param set-default SIM_GZ_EN 1
+
+# Mixer geometry — px4vision 모델 SDF의 실제 모터 위치 (±0.0935, ±0.107).
+param set-default CA_AIRFRAME 0
+param set-default CA_ROTOR_COUNT 4
+
+param set-default CA_ROTOR0_PX  0.0935
+param set-default CA_ROTOR0_PY  0.107
+param set-default CA_ROTOR0_KM  0.05
+
+param set-default CA_ROTOR1_PX -0.0935
+param set-default CA_ROTOR1_PY -0.107
+param set-default CA_ROTOR1_KM  0.05
+
+param set-default CA_ROTOR2_PX  0.0935
+param set-default CA_ROTOR2_PY -0.107
+param set-default CA_ROTOR2_KM -0.05
+
+param set-default CA_ROTOR3_PX -0.0935
+param set-default CA_ROTOR3_PY  0.107
+param set-default CA_ROTOR3_KM -0.05
+
+# Actuator mapping (gz multicopter motor model).
+param set-default SIM_GZ_EC_FUNC1 101
+param set-default SIM_GZ_EC_FUNC2 102
+param set-default SIM_GZ_EC_FUNC3 103
+param set-default SIM_GZ_EC_FUNC4 104
+
+param set-default SIM_GZ_EC_MIN1 150
+param set-default SIM_GZ_EC_MIN2 150
+param set-default SIM_GZ_EC_MIN3 150
+param set-default SIM_GZ_EC_MIN4 150
+
+param set-default SIM_GZ_EC_MAX1 1000
+param set-default SIM_GZ_EC_MAX2 1000
+param set-default SIM_GZ_EC_MAX3 1000
+param set-default SIM_GZ_EC_MAX4 1000
+
+# Hover throttle — 실측 VFR_HUD 기반 (위 헤더 참조).
+param set-default MPC_THR_HOVER 0.59
+
+# XY velocity controller P-게인 — 기본값 1.8은 τ≈0.56s로 2s 명령에서
+# 실측 60-65%만 추적(ADR-0012 §G2 회귀). Z축 기본값 4.0을 xy에도 적용:
+# τ≈0.25s → 2s 명령 예측 추적률 87%. (rebuild 필수 — sitl_set_params.sh 병용)
+param set-default MPC_XY_VEL_P_ACC 4.0
+
+# SITL preflight 완화 — GCS 무연결 환경.
+param set-default NAV_DLL_ACT 0

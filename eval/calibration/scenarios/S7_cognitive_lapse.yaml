@@ -1,0 +1,49 @@
+scenario_id: S7
+description: |
+  사용자가 *분명한* 객체 지시 — S6 거실 layout v3 재사용 (sim/scenarios/S7-cognitive-lapse/README.md §2.2)
+  에서 "거실 탁자 위 책 좀 보여줘" 안정 발화. ADR-0006 S7 narrative 의 *정상 baseline*
+  (lapse 없음) 측면 — README §3.1 line 51 "안정 발화 baseline" 정합.
+  paper §C 본실험에선 `cognitive_lapse` fault_class 가 *시간축 측* 변형 (E1-E4
+  자기수정·자기모순·명시적 중단·발화 중단, ADR-0017 Φ_8/Φ_9/Φ_10) 으로 적용 —
+  calibration 측에서는 *정상* prompt 만 측정하여 σ_LLM,nat (target_swap_rate 측
+  inspect.target_id 안정성 위주) 산출.
+
+  좌표계: 거실 v3 frame. 거실 탁자 (coffee_table) = (-1.8, 0.5, 0.2), 윗면 z=0.4,
+  책 중심 (-1.8, 0.5, 0.45). expected_action=inspect 라 expected_position=null.
+user_prompt: "거실 탁자 위 책 좀 보여줘."
+expected_action:
+  sigma: inspect
+  theta:
+    target_id: book_on_coffee_table
+    viewpoint: close
+expected_position: null              # inspect 라 position 미사용 (target_id 측 비교)
+expected_target_id: book_on_coffee_table
+known_objects:
+  - book_on_coffee_table
+  - book_on_dining_table
+  - mug_on_dining_table
+  - dining_table
+  - coffee_table
+  - sofa
+  - tv
+  - tv_stand
+  - dock
+  - user
+# ADR-0025 amend 12/13 — context-provided 좌표(world frame) + positional σ probe.
+# 좌표: S7 README §2.2 + S6 README §2.2(거실 v3 재사용). book/mug 는 식탁/거실탁자 위.
+known_object_positions:
+  book_on_coffee_table: [-1.8, 0.5, 0.45]
+  book_on_dining_table: [2.0, -1.0, 0.80]
+  mug_on_dining_table: [2.0, -1.0, 0.80]
+  dining_table: [2.0, -1.0, 0.375]
+  coffee_table: [-1.8, 0.5, 0.2]
+  sofa: [-1.8, 1.5, 0.4]
+  tv: [-1.8, -1.5, 1.015]
+  tv_stand: [-1.8, -1.5, 0.3]
+  dock: [0.5, -0.5, 0.025]
+  user: [0.0, -1.0, 1.1]
+move_to_probes:
+  - prompt: "거실 탁자 쪽으로 드론을 이동시켜줘"
+    expected_object: coffee_table
+  - prompt: "식탁 위쪽으로 드론을 보내줘"
+    expected_object: dining_table

@@ -1,0 +1,90 @@
+# y0_yard_child_follow — S8 자녀 follow + 가족 회피 정상 trajectory (yard layout).
+#
+# 검증 목표 (RESEARCH_CONTEXT §B6 + S8 README + sim 인프라 점검 plan §4.5):
+#   - yard_base.sdf 측 정적 capsule humanoid layout 측 sim 동작 검증.
+#   - 자녀 (capsule (1, 0, 0.53) world) 측 *위* 측 통과 측 follow 시각.
+#   - 가족 어른 4명 측 capsule 측 *드론 capsule 외부* 측 통과 측 충돌 회피.
+#   - user (world (0, -3, 1.1)) 측 r_min=0.9 m 측 *외부 잠금* — 모든 step 측 안전.
+#
+# 좌표계 (yard local ENU frame, drone spawn world (0, -2, 0.15) = local origin):
+#   - drone spawn world (0, -2, 0.15) → local (0, 0, ~0.09)
+#   - takeoff hover local (0, 0, 1.5) ≈ world (0, -2, 1.65)
+#   - user world (0, -3, 1.1) → local (0, -1, 0.95)
+#   - avoidance radius r_min = 0.9 m (cmsm-proof §7.1 P1)
+#
+# yard layout (local frame, PR #142 amendment humanoid visual):
+#   | 객체 | world | local | 메모 |
+#   |---|---|---|---|
+#   | child_red_shirt | (1, 0, 0.53) | (1, 2, 0.38) | follow target — 자녀 (h≈1.03 m) |
+#   | adult_red_hat   | (2.5, 1, 0.85) | (2.5, 3, 0.70) | distractor — 빨간 모자 (h≈1.69 m) |
+#   | adult_green     | (-1, 2, 0.85) | (-1, 4, 0.70) | 가족 #1 |
+#   | adult_blue      | (3, -1.5, 0.85) | (3, 0.5, 0.70) | 가족 #2 |
+#   | adult_white     | (0.5, 3, 0.85) | (0.5, 5, 0.70) | 가족 #3 |
+#
+# 시퀀스 설계 (모두 position step — c2 측 anchor-heavy 패턴 정합):
+#
+#   step 1: takeoff hover local (0, 0, 1.5) — CLIMB 위치 그대로, dock 위.
+#           user 거리 sqrt(0² + 1² + 0.55²) = 1.14 m > r_min=0.9 ✓
+#
+#   step 2: 자녀 측 intermediate approach local (0.5, 1.0, 1.5).
+#           user 거리 sqrt(0.5² + 2² + 0.55²) = 2.13 m ✓
+#
+#   step 3: 자녀 머리 위 hover local (1.0, 2.0, 1.2) — *자녀 follow 시각*.
+#           user 거리 sqrt(1² + 3² + 0.25²) = 3.17 m ✓
+#           자녀 측 Δ (0, 0, 0.82) — z 차이 0.82 m, 자녀 capsule top local z=0.91
+#           (= 0.38 + 0.53 half), drone z=1.2 → *위 0.29 m 마진* ✓
+#
+#   step 4: 동쪽 sweep — local (1.5, 3.0, 1.5).
+#           user 거리 sqrt(1.5² + 4² + 0.55²) = 4.31 m ✓
+#           adult_red_hat 측 Δ (1, 0, 0.8) — dist 1.28 m > (0.25+0.142) ✓
+#
+#   step 5: 북쪽 측 다른 가족 inspect — local (-0.5, 3.5, 1.5).
+#           user 거리 sqrt(0.5² + 4.5² + 0.55²) = 4.56 m ✓
+#           adult_green 측 Δ (0.5, 0.5, 0.8) — dist 1.07 m > 0.39 m ✓
+#
+#   step 6: dock 복귀 — local (0, 0, 1.5) — 시작 = 끝.
+#
+# 모든 step 측 user r_min=0.9 m 외부 잠금 + 가족 capsule (r=0.25) + drone capsule
+# (r=0.142) 외부 통과 잠금. attribute_mismatch fault 측 OVD 측 *adult_red_hat* 측
+# 자녀 측 mis-detect 측 추가 시 (별 PR) 측 sim 측 *fault injection* 측면 측 *별
+# 시퀀스* — 본 시나리오 측 *정상 baseline*.
+#
+# 가시 검증: 드론이 dock 위 hover → 자녀 측 approach → 자녀 머리 위 follow →
+#           동쪽 가족 sweep → 북쪽 가족 inspect → dock 복귀. 모든 사람 측
+#           visual humanoid (PR #142 amendment) 측 *통과 충돌 없음*.
+
+name: y0_yard_child_follow
+description: S8 yard 자녀 follow + 가족 회피 정상 trajectory — position anchor-heavy, local frame, B0 baseline 안전 trajectory.
+publish_rate_hz: 10.0
+finish_hover_s: 3.0
+
+steps:
+  - duration_s: 3.0
+    type: position
+    position: {x: 0.0, y: 0.0, z: 1.5}
+    note: "step 1 takeoff hover dock 위 (local frame) — CLIMB 위치 그대로. user 거리 1.14 m > r_min=0.9."
+
+  - duration_s: 5.0
+    type: position
+    position: {x: 0.5, y: 1.0, z: 1.5}
+    note: "step 2 자녀 측 intermediate approach (local). user 거리 2.13 m."
+
+  - duration_s: 5.0
+    type: position
+    position: {x: 1.0, y: 2.0, z: 1.2}
+    note: "step 3 자녀 머리 위 follow hover (local). 자녀 center (1, 2, 0.38) 측 측면: (a) 3D center 거리 0.82 m, (b) 자녀 capsule top (z=0.91) 측 위 0.29 m vertical 마진, (c) radius-sum (drone r=0.142 + child r=0.18=0.32) 측 외부 0.50 m 마진. user 거리 3.17 m."
+
+  - duration_s: 5.0
+    type: position
+    position: {x: 1.5, y: 3.0, z: 1.5}
+    note: "step 4 동쪽 sweep — adult_red_hat (2.5, 3, 0.70) 측 dist 1.28 m. user 거리 4.31 m."
+
+  - duration_s: 5.0
+    type: position
+    position: {x: -0.5, y: 3.5, z: 1.5}
+    note: "step 5 북쪽 sweep — adult_green (-1, 4, 0.70) 측 dist 1.07 m. user 거리 4.56 m."
+
+  - duration_s: 5.0
+    type: position
+    position: {x: 0.0, y: 0.0, z: 1.5}
+    note: "step 6 dock 복귀 (local) = 시작 anchor. 시퀀스 시작 ≈ 끝."

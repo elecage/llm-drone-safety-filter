@@ -1,0 +1,33 @@
+# c0_up_down_sweep — z축 ENU→NED 변환 검증 (G2 첫 시나리오).
+#
+# 검증 목표 (ADR-0011 D3):
+#   - ENU z+ (Up) → NED z- (Down 음수) 부호 반전 적용 확인.
+#   - G1의 nominal_timeout(0.5s) 동작 — finish_hover에서 자동 정지 복귀.
+#
+# 안전 amplitude (거실 천장 2.4m, 사용자 head 1.1m, G1 takeoff 1.5m 가정):
+#   climb +0.3 m/s × 2s = +0.6 m → 1.5 + 0.6 = 2.1 m (천장 0.3 m 마진)
+#   descend -0.3 m/s × 2s = -0.6 m → 2.1 - 0.6 = 1.5 m (원위치)
+#
+# 가시 검증: gz GUI에서 드론이 위로 ~0.6m 올랐다 내려와 원위치 hover.
+
+name: c0_up_down_sweep
+description: z축 ENU↔NED 변환 검증 — 거실 천장 마진 고려 climb 0.6m 후 복귀.
+publish_rate_hz: 10.0
+finish_hover_s: 3.0
+
+steps:
+  - duration_s: 2.0
+    linear: {x: 0.0, y: 0.0, z: 0.0}
+    note: "hover stabilize"
+  - duration_s: 2.0
+    linear: {x: 0.0, y: 0.0, z: 0.3}    # ENU Up → NED -z, climb
+    note: "climb +0.6m (ENU z+, NED z- 부호 반전 확인)"
+  - duration_s: 1.0
+    linear: {x: 0.0, y: 0.0, z: 0.0}
+    note: "hover at upper"
+  - duration_s: 2.0
+    linear: {x: 0.0, y: 0.0, z: -0.3}   # ENU Down → NED +z, descend
+    note: "descend -0.6m (원위치 복귀)"
+  - duration_s: 1.0
+    linear: {x: 0.0, y: 0.0, z: 0.0}
+    note: "hover finish"

@@ -1,0 +1,241 @@
+# C33 sub-task (b) — 정확도 측정용 N=50 정상 발화.
+#
+# 사지마비 페르소나 (C4-C6 척수손상)가 거실 보조 드론에 실제로 할 법한 한국어 발화.
+# ADR-0013 D2 5 스킬 × 10 발화 = 50.
+#
+# 각 항목:
+#   utterance     : 사용자 음성 발화 (텍스트화)
+#   expected_skill: 발화에 대응하는 정답 스킬 (SkillName 소문자 값)
+#   scenario_id   : c33_accuracy_bench.py 측 IntentInput.scenario_id 에 전달
+#   note          : (선택) 발화 의도 설명
+
+scenario_id: S3  # 기본 시나리오 ID — 거실 livingroom_base
+
+# 거실 기본 known_objects (S3 기준)
+known_objects:
+  - sofa
+  - coffee_table
+  - tv
+  - tv_stand
+  - dining_table
+  - dock
+  - user
+  - mug_left
+  - mug_center
+  - mug_right
+  - bottle_on_dining_table
+  - bookshelf
+  - wheelchair
+
+utterances:
+
+  # ─── MOVE_TO (10) ────────────────────────────────────────────────────────────
+
+  - utterance: "창문 쪽으로 이동해줘."
+    expected_skill: move_to
+    note: 창문 방향 이동 — 명확한 위치 지시
+
+  - utterance: "소파 위로 날아가봐."
+    expected_skill: move_to
+    note: 소파 상단 위치로 이동
+
+  - utterance: "TV 앞으로 가줄 수 있어?"
+    expected_skill: move_to
+    note: TV 앞 위치 이동 요청
+
+  - utterance: "천장 쪽으로 올라가줘."
+    expected_skill: move_to
+    note: 수직 상승 이동
+
+  - utterance: "현관 쪽으로 이동해."
+    expected_skill: move_to
+    note: 현관 방향 이동
+
+  - utterance: "내 휠체어 옆으로 와줘."
+    expected_skill: move_to
+    note: 휠체어 옆 위치로 이동 — known_objects 기준
+
+  - utterance: "저 구석으로 이동해줘."
+    expected_skill: move_to
+    note: 구석 방향 이동 (방향 단순, 모호성 낮음)
+
+  - utterance: "식탁 위로 가봐."
+    expected_skill: move_to
+    note: 식탁 상단 위치 이동
+
+  - utterance: "오른쪽으로 좀 이동해줘."
+    expected_skill: move_to
+    note: 상대적 방향 이동
+
+  - utterance: "거실 중앙으로 와줘."
+    expected_skill: move_to
+    note: 거실 중앙 위치 이동
+
+  # ─── INSPECT (10) ────────────────────────────────────────────────────────────
+
+  - utterance: "소파 위에 뭐가 있는지 봐줘."
+    expected_skill: inspect
+    note: sofa 상단 검사
+
+  - utterance: "커피 테이블 위 확인해줘."
+    expected_skill: inspect
+    note: coffee_table 검사
+
+  - utterance: "TV 뒤에 뭔가 있는 것 같아, 봐줄래?"
+    expected_skill: inspect
+    note: tv 후면 검사
+
+  - utterance: "식탁 위 살펴봐줘."
+    expected_skill: inspect
+    note: dining_table 검사
+
+  - utterance: "저 머그컵 왼쪽 것 좀 봐줘."
+    expected_skill: inspect
+    note: mug_left 검사
+
+  - utterance: "책장 쪽 확인 좀 해줘."
+    expected_skill: inspect
+    note: bookshelf 검사
+
+  - utterance: "병 옆에 뭐가 있는지 봐줘."
+    expected_skill: inspect
+    note: bottle_on_dining_table 주변 검사
+
+  - utterance: "내 옆에 뭐가 있는지 드론이 봐줘."
+    expected_skill: inspect
+    note: user 주변 검사
+
+  - utterance: "TV 화면 상태 확인해봐."
+    expected_skill: inspect
+    note: tv 전면 상태 검사
+
+  - utterance: "소파 아래쪽을 들여다봐줘."
+    expected_skill: inspect
+    note: sofa 하단 검사
+
+  # ─── RETURN_TO_DOCK (10) ─────────────────────────────────────────────────────
+
+  - utterance: "충전 독으로 복귀해줘."
+    expected_skill: return_to_dock
+    note: 명시적 도킹 복귀
+
+  - utterance: "도킹 스테이션으로 돌아가."
+    expected_skill: return_to_dock
+    note: 도킹 스테이션 명시적 언급
+
+  - utterance: "충전해야겠다, 독으로 가줘."
+    expected_skill: return_to_dock
+    note: 충전 필요성 → 독 복귀
+
+  - utterance: "배터리 충전 좀 해줘."
+    expected_skill: return_to_dock
+    note: 배터리 충전 요청 → 독 복귀
+
+  - utterance: "제자리로 돌아가줘."
+    expected_skill: return_to_dock
+    note: 제자리 = 독 위치
+
+  - utterance: "독 위에서 기다려줘."
+    expected_skill: return_to_dock
+    note: 독 위 대기 = 복귀
+
+  - utterance: "충전 독으로 가서 쉬어."
+    expected_skill: return_to_dock
+    note: 독 복귀 + 대기
+
+  - utterance: "집으로 돌아가."
+    expected_skill: return_to_dock
+    note: 집 = 독(홈 위치)
+
+  - utterance: "충전 위치로 이동해줘."
+    expected_skill: return_to_dock
+    note: 충전 위치 = 독
+
+  - utterance: "지금은 안 써도 되니까 독으로 복귀해."
+    expected_skill: return_to_dock
+    note: 비사용 → 독 복귀
+
+  # ─── EMERGENCY_LAND (10) ─────────────────────────────────────────────────────
+
+  - utterance: "비상 착륙해줘."
+    expected_skill: emergency_land
+    note: 명시적 비상 착륙
+
+  - utterance: "지금 바로 내려."
+    expected_skill: emergency_land
+    note: 즉시 하강 명령
+
+  - utterance: "즉시 착륙해."
+    expected_skill: emergency_land
+    note: 즉시성 강조
+
+  - utterance: "빨리 착륙시켜줘."
+    expected_skill: emergency_land
+    note: 긴급 착륙
+
+  - utterance: "위험해, 착륙해."
+    expected_skill: emergency_land
+    note: 위험 상황 → 착륙
+
+  - utterance: "지금 당장 내려앉아."
+    expected_skill: emergency_land
+    note: 즉시 착지 명령
+
+  - utterance: "강제 착륙해줘."
+    expected_skill: emergency_land
+    note: 강제 착륙 명시
+
+  - utterance: "긴급 착륙."
+    expected_skill: emergency_land
+    note: 매우 짧은 긴급 명령
+
+  - utterance: "드론 내려."
+    expected_skill: emergency_land
+    note: 단순 하강 명령 (긴급 맥락)
+
+  - utterance: "멈추고 바닥에 내려와."
+    expected_skill: emergency_land
+    note: 정지 후 착지
+
+  # ─── ASK_USER (10) ───────────────────────────────────────────────────────────
+  # 진짜 모호성 — 지시 대상 불명확 또는 의도 불명확.
+
+  - utterance: "저것 좀 봐줘."
+    expected_skill: ask_user
+    note: 지시 대상(저것) 불명확
+
+  - utterance: "거기 가줘."
+    expected_skill: ask_user
+    note: 위치(거기) 불명확
+
+  - utterance: "내 것 찾아줘."
+    expected_skill: ask_user
+    note: 내 것 — 지시 대상 불명확
+
+  - utterance: "아까 그거 다시 해줘."
+    expected_skill: ask_user
+    note: 이전 맥락 없음 — 행동 불명확
+
+  - utterance: "도와줘."
+    expected_skill: ask_user
+    note: 요청 내용 완전 불명확
+
+  - utterance: "조금 움직여줘."
+    expected_skill: ask_user
+    note: 방향·거리 불명확
+
+  - utterance: "왼쪽에 있는 게 뭔지 확인해줘."
+    expected_skill: ask_user
+    note: 왼쪽 — 드론 기준인지 사용자 기준인지 불명확
+
+  - utterance: "이상한 소리가 나는 것 같아."
+    expected_skill: ask_user
+    note: 소리 위치·행동 요청 불명확
+
+  - utterance: "저기 뭔가 있는 것 같아."
+    expected_skill: ask_user
+    note: 위치(저기) 불명확
+
+  - utterance: "좀 더 해줘."
+    expected_skill: ask_user
+    note: 이전 행동·정도 불명확

@@ -1,0 +1,30 @@
+# OVD (Open-Vocabulary Detection) deps — paper-1 B1 트랙.
+#
+# 정책: ADR-0004 — 모든 Python 은 $REPO_ROOT/.venv 안에서만. 설치는
+#       scripts/install_ovd.sh 가 venv 활성 상태에서 수행.
+#
+# 잠금 (ADR-0021 1차 답): YOLO-World 단일 백본 (ultralytics 경유). Apple
+#       Silicon (arm64) MPS 백엔드 사용. Grounding DINO 는 paper-1 범위 밖.
+#
+# Python 호환: 3.9+ (현재 .venv = 3.9.6 시스템). torch 2.6 / torchvision 0.21
+#       arm64 macOS wheel 이 3.9–3.13 모두 제공.
+
+# --- 코어 ML 런타임 ---
+# torch 2.6+ 는 Apple Silicon MPS 가 안정. 2.5 까지는 일부 op 누락.
+torch>=2.6,<3.0
+torchvision>=0.21,<0.22
+
+# --- YOLO-World (ultralytics) ---
+# 8.3.x 는 YOLO-World v1/v2 둘 다 지원 (model="yolov8s-worldv2.pt" 등).
+# CLIP backbone 은 ultralytics 가 내부에 들고 있음 (별도 설치 불필요).
+ultralytics>=8.3.0,<9.0
+
+# --- 이미지 IO / 시각화 ---
+opencv-python>=4.10,<5.0
+pillow>=11.0,<12.0
+# supervision 은 YOLO-World 출력의 detection box / label 시각화 + 평가 지표.
+# 0.26+ 는 Python 3.9+ 만 지원 — .venv 3.9.6 호환 가능.
+supervision>=0.26,<1.0
+
+# --- weight pull (opt-in OVD_FETCH_WEIGHTS=1 일 때만 import) ---
+huggingface-hub>=0.27,<1.0

@@ -1,0 +1,14 @@
+name: signals_high_confidence
+description: |
+  s1=s2=s3=0.95 고정 (의도해석기 자신감 높음). c_raw = 0.95^3 ≈ 0.857.
+  rate limiter 무관 (변화 없음). r = r_min + (1−0.857)Δr ≈ r_min 근접 →
+  덜 보수, 더 유용한 작업. ADR-0020 D1 곱셈형 — high-confidence 끝점 입증.
+publish_rate_hz: 10
+finish_hover_s: 3.0
+segments:
+  - duration_s: 10.0
+    type: constant
+    s1: 0.95
+    s2: 0.95
+    s3: 0.95
+    note: 안정 + 높은 confidence

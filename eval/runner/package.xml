@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>eval_runner</name>
+  <version>0.0.1</version>
+  <description>
+    paper §C trial 격자 자동화 runner — ADR-0025 D3 격자 (4 시나리오 × 5 baseline
+    × 5 fault_class × 10 episode = 1000 trial) enumeration + 5 차원 deterministic
+    seed 정책 + 격자 측 ablation chain invariant 자동 검증. 본 PR (B7 #12 분할
+    1/N) scope = host venv 측 *runner core* (격자 + TrialSpec + seed + invariant
+    + 단위 테스트). ROS 2 launch composition logic + intent/llm wrapper 합성은
+    후속 PR (B7 #12 분할 2/N).
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>eval_baselines</exec_depend>
+  <exec_depend>eval_faults</exec_depend>
+  <exec_depend>eval_metrics</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

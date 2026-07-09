@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# ROS 2 / colcon build artifacts
+build/
+install/
+log/
+
+# Gazebo world assets (third-party; fetch separately, see README)
+sim/models/
+
+# model weights
+weights/
+models/
+
+# logs / results
+*.log
+results/

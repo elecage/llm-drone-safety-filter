@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>teleop_keyboard</name>
+  <version>0.0.1</version>
+  <description>
+    Manual keyboard teleop — 터미널 측 raw stdin (termios) 측 WASD/RF/QE 측
+    ENU velocity 측 TwistStamped publish (/cmd/trajectory_setpoint_nominal).
+    ADR-0005 D3 측 intent-agnostic nominal source — g2_waypoint_player 측
+    *대신* 측 *수동 조종* 측면. tier1_filter 측 nominal 측 그대로 통과.
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

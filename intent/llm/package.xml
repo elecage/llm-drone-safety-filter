@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>intent_llm</name>
+  <version>0.0.1</version>
+  <description>
+    paper §C 5-way 의도해석기 ablation 측 wrapper 패키지 — ADR-0018 D3 + ADR-0005
+    D6 + ADR-0014 6 백본 정합. 본 PR (B7 #12 분할 2b-1) scope = interface
+    contract (TypedAction · IntentInput · IntentResult · IntentWrapper Protocol)
+    + ADR-0013 D2 5 스킬 카탈로그 + Domain classifier 실 stub (keyword
+    matching, ADR-0018 D3 정합) + registry. Cloud / Edge / VLA / Adversarial
+    wrapper 측 후속 PR (분할 2b-2 ~ 2b-4).
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

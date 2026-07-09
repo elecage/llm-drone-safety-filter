@@ -1,0 +1,9 @@
+name: c_constant_1
+description: 상수 c=1.0 — B2 regression 검증 (B1과 동일 동작 기대, r=r_min=0.9m).
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 30.0
+    type: constant
+    value: 1.0
+    note: 정확한 명료 발화 — r = r_min 고정

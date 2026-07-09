@@ -1,0 +1,67 @@
+# c1_square_pattern — xy 평면 ENU↔NED 4축 매핑 검증.
+#
+# 검증 목표 (ADR-0011 D3):
+#   - ENU x+ (East)  → NED y+ (East 동일 축)
+#   - ENU y+ (North) → NED x+ (North 동일 축)
+#   - 부호 swap (x↔y) + 음수 방향까지 4축 모두 검증.
+#
+# 좌표계 (2026-05-24 통일):
+#   모든 position = G1의 **local ENU frame** (PX4 EKF origin 기준).
+#   EKF origin xy = drone spawn world (0.5, -0.5). local (0, 0) = world (0.5, -0.5).
+#
+# 시퀀스 구조:
+#   각 leg = (a) corner position anchor → 다음 시작점으로 hop, (b) velocity 명령
+#   2s 동안 leg 그리기. corner anchor가 매 leg마다 drift 누적을 끊으므로
+#   정사각형이 정확히 닫힘.
+#
+# dock 위 시작 local (0, 0, 1.5):
+#   - corner A: local (0, 0)         [origin/SW, dock 위]
+#   - leg East 0.35 m/s × 2s → 예측 변위 0.61m
+#   - corner B: local (0.6, 0)       [SE]
+#   - leg North 0.35 m/s × 2s
+#   - corner C: local (0.6, 0.6)     [NE]
+#   - leg West
+#   - corner D: local (0, 0.6)       [NW]
+#   - leg South
+#   - end anchor A: local (0, 0)
+#
+# 가시 검증: gz GUI에서 드론이 정사각형 한 바퀴 그리는지 + 시작점 복귀.
+
+name: c1_square_pattern
+description: xy 정사각형 — corner anchor로 leg 간 drift 누적 차단, 정확한 사각형 닫힘. local frame.
+publish_rate_hz: 10.0
+finish_hover_s: 3.0
+
+steps:
+  - duration_s: 1.5
+    type: position
+    position: {x: 0.0, y: 0.0, z: 1.5}
+    note: "anchor A (local SW/origin = dock 위)"
+  - duration_s: 2.0
+    linear: {x: 0.35, y: 0.0, z: 0.0}    # ENU East
+    note: "East (+x ENU = +y NED) — 예측 변위 0.61m"
+  - duration_s: 1.5
+    type: position
+    position: {x: 0.6, y: 0.0, z: 1.5}
+    note: "anchor B (local SE)"
+  - duration_s: 2.0
+    linear: {x: 0.0, y: 0.35, z: 0.0}    # ENU North
+    note: "North (+y ENU = +x NED) — 예측 변위 0.61m"
+  - duration_s: 1.5
+    type: position
+    position: {x: 0.6, y: 0.6, z: 1.5}
+    note: "anchor C (local NE)"
+  - duration_s: 2.0
+    linear: {x: -0.35, y: 0.0, z: 0.0}   # ENU West
+    note: "West (-x ENU = -y NED) — 예측 변위 0.61m"
+  - duration_s: 1.5
+    type: position
+    position: {x: 0.0, y: 0.6, z: 1.5}
+    note: "anchor D (local NW)"
+  - duration_s: 2.0
+    linear: {x: 0.0, y: -0.35, z: 0.0}   # ENU South
+    note: "South (-y ENU = -x NED) — 예측 변위 0.61m"
+  - duration_s: 1.5
+    type: position
+    position: {x: 0.0, y: 0.0, z: 1.5}
+    note: "anchor A (원위치 복귀 — 정사각형 닫힘)"

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>scenario_params</name>
+  <version>0.0.1</version>
+  <description>
+    시나리오별 사용자 좌표 단일 진실 소스 (world 좌표, spawn 오프셋, local ENU, r_min).
+    sim_user_marker 와 tier1_filter 가 공유하는 cross-package 공통 모듈.
+    ROS 2 노드 없음 — 순수 Python 유틸리티 패키지.
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

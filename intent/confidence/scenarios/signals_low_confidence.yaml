@@ -1,0 +1,15 @@
+name: signals_low_confidence
+description: |
+  s1=s2=s3=0.5 고정 (의도해석기 자신감 보통-낮음). c_raw = 0.5^3 = 0.125.
+  ADR-0020 Consequences amendment 의 *under-estimation* 사례 — 각 신호가
+  "절반" 인데 c_raw 가 0.125 까지 떨어짐. r 거의 r_max 에 근접 → graceful
+  보수 거동.
+publish_rate_hz: 10
+finish_hover_s: 3.0
+segments:
+  - duration_s: 10.0
+    type: constant
+    s1: 0.5
+    s2: 0.5
+    s3: 0.5
+    note: 모든 신호 0.5 → c_raw=0.125 (under-estimation 경고 사례)

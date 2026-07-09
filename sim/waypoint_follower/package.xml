@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>waypoint_follower</name>
+  <version>0.0.1</version>
+  <description>
+    목표 지점(pose waypoint) → 연속 속도 공칭 입력 변환 (ADR-0029 블로커 3).
+    sigma_bridge 의 1회성 pose waypoint 를 포화 P-제어 속도로 20Hz 스트림하여
+    tier1 의 정형 보증된 속도 CBF-QP(paper §5)가 연속 작동하게 한다.
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>px4_msgs</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

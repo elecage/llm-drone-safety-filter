@@ -1,0 +1,16 @@
+name: c_step_down
+description: |
+  t=5s에서 c 1.0 → 0.0 즉시 step. 변화율 제한기 발동 — raw |\dot c| → ∞ 가
+  tier1_filter에서 |\dot{\tilde c}| ≤ dot_c_max=0.833/s로 clamp.
+  결과: \tilde c는 5s부터 약 1.2s에 걸쳐 1→0으로 감속 (0.833 *  1.2 ≈ 1.0).
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 5.0
+    type: constant
+    value: 1.0
+    note: c=1 hold (B1 동작)
+  - duration_s: 25.0
+    type: step
+    value: 0.0
+    note: 즉시 점프 0.0 — rate limiter clamp 검증

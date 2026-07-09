@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>tier2_gate</name>
+  <version>0.0.1</version>
+  <description>
+    Paper-1 티어2 계획 수준 검증 게이트 — *의도해석기* 출력 (σ, θ, c) 삼중쌍을
+    결정 함수 G로 accept/confirm/reject로 분류. cmsm-proof §9.4 정형 사양 +
+    ADR-0013 (5 스킬 카탈로그 + Φ_1…Φ_10 LTL + 신뢰도 임계) +
+    ADR-0019 (contradicts 술어 7 조건 + 5×5 매트릭스) 잠금.
+    A4-1 = pure-Python 모듈 + 단위 테스트 (노드는 A4-2에서 추가).
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>px4_msgs</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -1,0 +1,24 @@
+name: signals_s1_absent
+description: |
+  *(A) 명시 fail-safe* 입증 — s2/s3 정상 (0.9, 0.9) 인데 t=5s 부터 s1_absent=true.
+  ADR-0020 D3 fail-safe: 부재 플래그 set 되면 compute_g 가 s1 입력값 무시하고
+  *그 신호를 0 으로 환원* → c_raw = 0·0.9·0.9 = 0 → rate limiter 통해 c̃ → 0
+  점진 감쇠 (정확히 |c̃_prev| / dot_c_max 초). r → r_max. cmsm-proof §10.5
+  (CA-3) modality 가용성 약화 시나리오와 정합. *(B) 낮은 신뢰도* 와 *결과는 같으나*
+  진단 채널이 분리 보고.
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 5.0
+    type: constant
+    s1: 0.9
+    s2: 0.9
+    s3: 0.9
+    note: 정상 — c_raw ≈ 0.729
+  - duration_s: 8.0
+    type: constant
+    s1: 0.0  # absent=true 와 정합 (loader warning 회피, PR #69 review §3)
+    s2: 0.9
+    s3: 0.9
+    s1_absent: true
+    note: s1 부재 (OVD 검출 끊김) — absent 플래그 + c_raw=0 fail-safe

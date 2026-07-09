@@ -1,0 +1,9 @@
+name: c_constant_0
+description: 상수 c=0.0 — 최대 모호 — r=r_max=1.5m으로 더 멀리 brake 검증.
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 30.0
+    type: constant
+    value: 0.0
+    note: 완전 모호 — r = r_max 고정

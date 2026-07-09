@@ -1,0 +1,9 @@
+# eval/calibration/ 의존성 — paper §C calibration PR (ADR-0025 D1.b).
+# ADR-0014 + ADR-0025 D1.b amendment 8: calibration 대상 = GPT-4o + GPT-5.5
+# (둘 다 OpenAI API). Anthropic Claude 는 ADR-0014 에 없음.
+#
+# 실 API 호출 시 OPENAI_API_KEY 환경변수 필수.
+# 호스트 venv 측 단위 테스트는 client_factory mock 으로 openai 패키지 없이도 가능.
+
+openai>=1.50.0,<2.0.0
+pyyaml>=6.0

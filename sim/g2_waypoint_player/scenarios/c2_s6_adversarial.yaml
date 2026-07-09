@@ -1,0 +1,103 @@
+# c2_s6_adversarial — S6 적대적 목표 지점 시퀀스 (티어1 baseline B0).
+#
+# v4.1 layout 정합 (2026-05-30 redesign) — 사용자가 소파 동쪽 옆자리 world
+#   (0, 1.5, 1.1) → local (-0.5, 2.0, 0.95) 로 이동 (v3 user local x = -3.1
+#   에서 +2.6 m 동쪽). dock↔user 3D 거리 = 3.81 m (v3) → 2.27 m (v4.1) 로
+#   짧아짐 → step 2 velocity 크기 축소 + 접근 벡터 재계산. v3 의 NW 강한
+#   접근 (vy=+0.32, vx=-0.5) 은 v4.1 에서 north wall over-shoot — 거부.
+#
+# 검증 목표 (RESEARCH_CONTEXT §B6, sim/scenarios/S6-adversarial-setpoint/):
+#   - 외부 *적대적* nominal velocity가 user 회피 영역(반경 r_min=0.9 m)으로
+#     드론을 끌어들이는 상황 재현.
+#   - 티어1 미구현(B0) 단계 = G1이 nominal을 그대로 PX4로 forward → 드론이
+#     user 회피 영역 침입함을 *육안 확인* (안전 위반의 baseline).
+#   - 티어1 구현 후(B1·B2) 동일 시퀀스 입력에 침입 0건이 입증 목표.
+#
+# 좌표계 (2026-05-24 통일):
+#   모든 position/velocity = G1의 **local ENU frame** (PX4 EKF origin 기준).
+#   EKF origin xy = drone spawn world (0.5, -0.5), EKF origin z ≈ 0.15.
+#   따라서 local (x, y, z) ↔ world (x+0.5, y-0.5, z+0.15).
+#
+# 거실 layout v4.1 (local frame, 2026-05-30):
+#   - drone spawn world (0.5, -0.5, 0.24) → local (0, 0, ~0.09)
+#   - takeoff hover local (0, 0, 1.5) ≈ world (0.5, -0.5, 1.65)
+#   - user world (0.0, 1.5, 1.1) → local (-0.5, 2.0, 0.95)
+#     (소파 동쪽 옆자리, scenario_params/params.py L36 + sim_user_marker 정합)
+#   - avoidance radius r_min = 0.9 m (2026-05-25 갱신, cmsm-proof §7.1 P1)
+#   - dock↔user local 3D 거리 = sqrt(0.5² + 2.0² + 0.95²) ≈ 2.27 m (v3 = 3.81 m)
+#   - 거실 벽 (local frame, v4.1 변경 없음): west x≈-3.5, east x≈+2.5,
+#     north y≈+2.5, south y≈-1.5
+#
+# 시퀀스 설계 (v4.1):
+#   start anchor local (0, 0, 1.5) — CLIMB hover 그대로 = dock 위. 시작 = anchor.
+#
+#   step 2: ENU velocity (-0.1, +0.3, 0) × 6s. v3 (-0.5, +0.32) × 6s 대비
+#     크게 축소 — user 가 2.6 m 동쪽으로 이동했으므로 더 짧은 northward
+#     접근만 필요. 100% 추적 가정 변위 Δ = (-0.6, +1.8, 0)
+#     → drone local (-0.6, +1.8, +1.5)
+#     drone local (-0.6, +1.8, +1.5) ↔ user local (-0.5, +2.0, +0.95):
+#       3D 거리 = sqrt(0.01 + 0.04 + 0.3025) ≈ 0.594 m < r_min 0.9 (침입 OK)
+#     local x=-0.6 은 west wall (local x≈-3.5) 까지 2.9 m 여유 ✓ (v3 = 0.5 m)
+#     local y=+1.8 은 north wall (local y≈+2.5) 까지 0.7 m 여유 ✓ (v3 = 0.58 m)
+#     v4.1 은 user 가 가까워 wall 마진이 v3 대비 *오히려 충분*.
+#
+#   step 3: 침입 hover anchor local (-0.5, 2.0, 1.15) — user 위 0.2 m.
+#     세계 좌표 = world (0.0, 1.5, 1.3) — user 빨간 구 중심 *바로 위* 시각 침입.
+#     drone local (-0.5, +2.0, +1.15) ↔ user local (-0.5, +2.0, +0.95):
+#       3D 거리 = 0.2 m → r_min 0.9 의 *최심 침입* (수직만 분리).
+#     sofa east edge world x = -0.8 (livingroom_base.sdf:191 sofa pose (-1.8, 1.5, 0.4)
+#       + box 2.0×0.9×0.8 → east edge -1.8+1.0 = -0.8, top z 0.4+0.4 = 0.8).
+#       ADR-0028 D5 §한계 "소파 동쪽 모서리 (-0.8, 1.5)" 정합:
+#       drone world (0.0, 1.5, 1.3) ↔ sofa east edge top (-0.8, 1.5, 0.8):
+#       horizontal 0.8 m + vertical 0.5 m → 3D 0.94 m ✓ 안전 (드론 반경 ~0.2 m
+#       빼면 clearance 0.74 m). PX4 추종 잔여 0.45 m (C21 인접) worst case
+#       drone (-0.45, 1.5, 1.3) 가정 시 3D 0.61 m → clearance 0.41 m 잔존.
+#
+#   step 4: 후퇴 velocity (+0.1, -0.3) × 6s — 대칭. 100% 추적 가정 변위
+#     (+0.6, -1.8) → drone local 시작 (-0.5, +2.0) → 끝 (+0.1, +0.2).
+#     step 5 anchor (0, 0) 근처 도달. wall 마진:
+#       end local x=+0.1, east wall +2.5: 2.4 m ✓
+#       end local y=+0.2, south wall -1.5: 1.7 m ✓
+#     vz=0 으로 z=1.15 유지 (anchor z 와 동일).
+#
+#   end anchor local (0, 0, 1.5) — CLIMB hover 위치 = dock 위 (다음 시나리오 시작점)
+#
+# 가시 검증 (v4.1): B0 = 드론이 dock 위에서 시작 → north 방향으로 *짧게* 가서
+#                   user 빨간 반투명 구 *바로 위* 안에 진입 → 후퇴 → dock 위로
+#                   복귀. 시작 ≈ 끝. MIN 3D 거리 ≈ 0.2 m (step 3 anchor).
+#
+# duration history:
+#   - 6s + start anchor + v3 layout (frame mismatch, 추적률 ~75%) → MIN 1.05m (침입 못 함)
+#   - 8s + start anchor + v3 layout (frame mismatch, 추적률 ~78%) → 침입 + wall 안전
+#   - 8s + start anchor + frame 통일 + v3 layout (추적률 ~100%) → 침입 ✓
+#       but step 4 over-shoot east wall — 거부
+#   - 6s + start anchor + frame 통일 + v3 layout + step 3 anchor → wall 마진 OK
+#   - **v4.1 redesign (2026-05-30)**: 6s + start anchor + frame 통일 + step 3 anchor +
+#       v4.1 user 위치 → velocity (-0.1, +0.3) 크기 축소. wall 마진 더 충분
+#       (north 0.7 m vs v3 0.58 m). 추종 잔여 0.45 m (C21 인접) 가정 시에도
+#       step 3 anchor 가 침입 강제 → robust.
+
+name: c2_s6_adversarial
+description: S6 적대적 목표 지점 (v4.1 layout) — start/end anchor + 적대적 velocity가 user 회피 영역 침입. 티어1 baseline B0. local frame.
+publish_rate_hz: 10.0
+finish_hover_s: 3.0
+
+steps:
+  - duration_s: 2.0
+    type: position
+    position: {x: 0.0, y: 0.0, z: 1.5}
+    note: "start anchor (local frame, drone 직상승 1.5m = dock 위) — CLIMB 위치 그대로"
+  - duration_s: 6.0
+    linear: {x: -0.1, y: 0.3, z: 0.0}
+    note: "user 회피 영역으로 적대적 접근 (N, v4.1) — 100% 추적 시 변위 (-0.6, +1.8, 0) → drone local ≈ (-0.6, +1.8, +1.5). 3D 거리 ≈ 0.591 m < r_min 0.9. wall 마진 west 2.9 m, north 0.7 m."
+  - duration_s: 3.0
+    type: position
+    position: {x: -0.5, y: 2.0, z: 1.15}
+    note: "침입 hover anchor (local, v4.1) — user local (-0.5, +2.0, +0.95) 위 z=0.2 m. 3D 거리 = 0.2 m (최심 침입, 수직만 분리). sofa east edge top 3D 0.94 m ✓ (드론 반경 0.2 m clearance 0.74 m, PX4 worst case 0.41 m)."
+  - duration_s: 6.0
+    linear: {x: 0.1, y: -0.3, z: 0.0}
+    note: "후퇴 (S, v4.1) — vz=0 이라 z=1.15 유지. 변위 (+0.6, -1.8, 0) → 끝 (+0.1, +0.2, +1.15). step 5 anchor 근처 도달. east 마진 2.4 m, south 1.7 m ✓."
+  - duration_s: 2.0
+    type: position
+    position: {x: 0.0, y: 0.0, z: 1.5}
+    note: "end anchor (local frame) = start anchor — dock 위 복귀, 시작 ≈ 끝"

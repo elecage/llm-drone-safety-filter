@@ -1,0 +1,305 @@
+<?xml version="1.0" ?>
+<!--
+  yard_base.sdf — S8 군중 영상 촬영 마당 layout (Gazebo Harmonic, SDF 1.10).
+
+  좌표·치수 출처: sim/scenarios/S8-crowd-cinematography/README.md §2.5 (정적 객체)
+    + §2.2 (가족 구성원, 본 SDF 에선 *정적* 잠금 — ADR-0026 D6 군중 정적 가구 시뮬).
+    - world frame 원점 = 마당 중앙, +x = 가옥 정면 방향, +y = 가옥 왼쪽, +z = 위.
+    - 단위 m, rad.
+
+  *정적 시뮬* (ADR-0026 D6): paper §C indoor 한정 정합 위해 S8 README §2.2 의
+    랜덤 워크 동적 객체를 *고정 좌표 capsule* 로 잠금. PR #86 review R2 (자녀
+    좌표 출처 honesty) 해결. paper §C 본실험 = 이 정적 layout 위에서 fault
+    injection (attribute_mismatch = OVD 측 label/bbox 오탐) 적용.
+
+  본 SDF 의 가족 5명 좌표는 ADR-0006 amendment 1+2 (S8 정적 layout) 정합.
+    - child_red_shirt: (1.0, 0.0, 0.53) — 소년 아동 (작은 capsule, 사이즈 차별화)
+    - adult_red_hat (distractor): (2.5, 1.0, 0.85) — 자녀 근처 후보 좁히기 모호함
+    - adult_green: (-1.0, 2.0, 0.85)
+    - adult_blue: (3.0, -1.5, 0.85)
+    - adult_white: (0.5, 3.0, 0.85)
+
+  Capsule 추상화 (사이즈 차별화 — PR #89 review R-3rd-A amendment 2):
+    - 자녀: 반경 0.18 m + 실린더 길이 0.7 m → 전체 높이 1.06 m, 중심 z = 0.53
+    - 어른: 반경 0.25 m + 실린더 길이 1.2 m → 전체 높이 1.7 m,  중심 z = 0.85
+
+  paper §C OVD calibration 측면 (ADR-0025 D1.d) 자녀-어른 라벨 구분에 *사이즈
+    단서* 도 제공.
+
+  PR #142 amendment (시각 fidelity 1차 개선): *visual* 측 humanoid primitive
+    composition (head sphere + torso cylinder + arms cylinder × 2 + legs
+    cylinder) 측 교체. *collision* 측 기존 capsule 측 *유지* — paper §C OVD
+    natural false rate 측 영향 0 (R-3rd-A 사이즈 차별화 잠금 유지).
+      - 자녀: legs L=0.45 r=0.05, torso L=0.4 r=0.13, head r=0.09, arms L=0.4 r=0.04
+              총 h ≈ 1.03 m
+      - 어른: legs L=0.85 r=0.07, torso L=0.6 r=0.18, head r=0.12, arms L=0.6 r=0.05
+              총 h ≈ 1.69 m
+    셔츠 색상 차별화 유지 (red/grey/green/blue/white). 피부톤 (0.85, 0.70,
+    0.60) + 바지 톤 (0.25, 0.30, 0.50/0.40) 측 추가. adult_red_hat 측 모자 box
+    측 head sphere 위 z=0.75 (model frame).
+
+    실 mesh (Gazebo Fuel actor 등) 측 완전 cover 측 후속 PR (paper-2 또는
+    별 트랙) — ADR-0006 line 100 backlog 정합.
+
+  본 월드엔 드론·사용자 마커가 포함되지 않는다:
+    - 드론: PX4 SITL이 x500 모델을 별도로 spawn.
+    - 사용자 회피 영역 마커: ROS 2 sim_user_marker 노드 (RViz용).
+-->
+<sdf version="1.10">
+  <world name="yard_base">
+
+    <physics name="default" type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+
+    <!-- gz-sim 시스템 plugin 은 의도적으로 *선언하지 않는다* (livingroom_base.sdf
+         §gz-sim plugin 주석 동일 — PX4 SITL gz_bridge 가 자동 주입). -->
+
+    <gravity>0 0 -9.8066</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+
+    <!-- livingroom_base.sdf 와 동일 좌표 (Zürich, PX4 default.sdf 정합). -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg> 8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+    <scene>
+      <ambient>0.85 0.85 0.85 1</ambient>
+      <background>0.55 0.70 0.90 1</background>  <!-- 실외 푸른 하늘 -->
+      <grid>false</grid>
+    </scene>
+
+    <light type="directional" name="sun">
+      <pose>0 0 15 0 0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <diffuse>1.0 1.0 0.95 1</diffuse>
+      <specular>0.4 0.4 0.4 1</specular>
+      <direction>-0.3 0.3 -1</direction>
+    </light>
+
+    <!-- ============================================================ -->
+    <!-- Ground (20 x 12, 가옥 + 마당 + 여유 포함, 윗면 z=0)              -->
+    <!-- ============================================================ -->
+    <model name="ground">
+      <static>true</static>
+      <pose>4.0 0 -0.05 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>20.0 12.0 0.1</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>20.0 12.0 0.1</size></box></geometry>
+          <material>
+            <ambient>0.45 0.55 0.30 1</ambient>  <!-- 잔디 톤 -->
+            <diffuse>0.45 0.55 0.30 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================ -->
+    <!-- 가옥 본체 (외벽 box, S8 README §2.5)                            -->
+    <!-- ============================================================ -->
+    <model name="house">
+      <static>true</static>
+      <pose>7.0 0 1.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>6.0 5.0 3.0</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>6.0 5.0 3.0</size></box></geometry>
+          <material>
+            <ambient>0.75 0.70 0.60 1</ambient>
+            <diffuse>0.75 0.70 0.60 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================ -->
+    <!-- 사용자 휠체어 (S8 README §2.5, 사용자 머리 = (0, -3, 1.1))        -->
+    <!-- ============================================================ -->
+    <model name="user_wheelchair">
+      <static>true</static>
+      <pose>0.0 -3.0 0.35 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>0.7 0.7 0.9</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.7 0.7 0.9</size></box></geometry>
+          <material>
+            <ambient>0.30 0.30 0.35 1</ambient>
+            <diffuse>0.30 0.30 0.35 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================ -->
+    <!-- 드론 도크 (S8 README §2.5, 사용자 옆)                            -->
+    <!-- ============================================================ -->
+    <model name="dock">
+      <static>true</static>
+      <pose>0.0 -2.0 0.025 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>0.3 0.3 0.05</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>0.3 0.3 0.05</size></box></geometry>
+          <material>
+            <ambient>0.20 0.20 0.20 1</ambient>
+            <diffuse>0.20 0.20 0.20 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================ -->
+    <!-- 자녀 (follow target, 빨간 셔츠) — 정적 humanoid (PR #142 amendment) -->
+    <!-- 좌표 (1.0, 0.0, 0.53) = eval/calibration/scenarios/S8 정합.       -->
+    <!--                                                                  -->
+    <!-- PR #89 review R-3rd-A amendment: 자녀와 어른 *사이즈 차별화* —      -->
+    <!-- 자녀 r=0.18, L=0.7, 전체 h=1.06, 중심 z=0.53 (소년 아동).          -->
+    <!-- 어른 r=0.25, L=1.2, 전체 h=1.7. paper §C OVD calibration 측면     -->
+    <!-- 자녀-어른 라벨 구분에 사이즈 단서 제공 + natural false rate 측 더    -->
+    <!-- 자연스러운 분포.                                                  -->
+    <!--                                                                  -->
+    <!-- PR #142 amendment: visual 측 humanoid composition (head sphere +  -->
+    <!--   torso cylinder + arms × 2 + legs cylinder) 측 교체. collision    -->
+    <!--   측 기존 capsule 측 *유지* — paper §C OVD calibration 측 영향 0   -->
+    <!--   + R-3rd-A 사이즈 차별화 잠금 유지. 모든 link 측 model frame 기준  -->
+    <!--   상대 z (model pose z=0.53 = capsule center = 발 z=0 측 정합).    -->
+    <!-- ============================================================ -->
+    <!-- [ADR-0033] visual = 사실적 Fuel 인체 mesh (외형 기반 YOLO-World 'person'
+         검출용 — 거실 가구와 동일한 collision-box + Fuel mesh include 패턴).
+         종전 primitive humanoid(capsule+cylinder+sphere)는 OVD 가 'person' 으로
+         검출 못 해 S8 grounding s1≈0 고착 → SR=0 의 근본 원인이었음(세션 49 진단).
+         collision capsule 은 물리용으로 유지. -->
+    <model name="child_red_shirt">
+      <static>true</static>
+      <pose>1.0 0.0 0.53 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><capsule><radius>0.18</radius><length>0.7</length></capsule></geometry>
+        </collision>
+      </link>
+    </model>
+    <!-- child = 로컬 yard_child_red (Walking person 0.62배 축소 + 셔츠 빨강 틴트,
+         scripts/build_yard_people.py). 빨간 셔츠 = S8 follow target 외관 단서. -->
+    <include>
+      <uri>model://yard_child_red</uri>
+      <name>child_red_shirt_mesh</name>
+      <pose>1.0 0.0 0 0 0 1.5708</pose>
+      <static>true</static>
+    </include>
+
+    <!-- ============================================================ -->
+    <!-- adult_red_hat (distractor) — 회색 셔츠 humanoid + 빨간 모자 box   -->
+    <!-- attribute_mismatch fault 측 OVD 후보 좁히기 모호함 강도 매개변수. -->
+    <!--                                                                  -->
+    <!-- PR #142 amendment: visual humanoid composition. collision 측 기존 -->
+    <!--   capsule 측 유지 (paper §C OVD calibration 측 영향 0).            -->
+    <!--   어른 측 총 h ≈ 1.69 m (capsule 1.7 정합).                       -->
+    <!--   모자 box 측 head sphere 측 *위* 측 배치 (z=0.75 model frame).    -->
+    <!-- ============================================================ -->
+    <!-- [ADR-0033] adult_red_hat (distractor) → 충돌 capsule + Fuel 인체 mesh. -->
+    <model name="adult_red_hat">
+      <static>true</static>
+      <pose>2.5 1.0 0.85 0 0 0</pose>
+      <link name="body">
+        <collision name="col">
+          <geometry><capsule><radius>0.25</radius><length>1.2</length></capsule></geometry>
+        </collision>
+      </link>
+    </model>
+    <!-- adult_red_hat = Walking person(흰 셔츠) + 빨간 모자 box(아래) = distractor.
+         빨강 모자 = follow target(빨강 셔츠 아이)와 같은 빨강 → 후보 좁히기 모호함(C2). -->
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Walking%20person</uri>
+      <name>adult_red_hat_mesh</name>
+      <pose>2.5 1.0 0 0 0 2.6</pose>
+      <static>true</static>
+    </include>
+    <!-- 빨간 모자 = 머리 위 크라운 원통 + 챙 디스크(버킷햇 형). 머리 꼭대기 ~1.8 m. -->
+    <model name="adult_red_hat_cap"><static>true</static>
+      <pose>2.5 1.0 0 0 0 0</pose>
+      <link name="link">
+        <visual name="crown">
+          <pose>0 0 1.87 0 0 0</pose>
+          <geometry><cylinder><radius>0.115</radius><length>0.14</length></cylinder></geometry>
+          <material><ambient>0.85 0.12 0.12 1</ambient><diffuse>0.85 0.12 0.12 1</diffuse></material>
+        </visual>
+        <visual name="brim">
+          <pose>0 0 1.80 0 0 0</pose>
+          <geometry><cylinder><radius>0.20</radius><length>0.025</length></cylinder></geometry>
+          <material><ambient>0.80 0.10 0.10 1</ambient><diffuse>0.80 0.10 0.10 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================ -->
+    <!-- adult_green / adult_blue / adult_white — distractor 없는 가족원   -->
+    <!-- PR #142 amendment: visual humanoid composition (adult_red_hat   -->
+    <!--   동일 구조, 셔츠 색상 차별화). collision 측 기존 capsule 유지.     -->
+    <!-- ============================================================ -->
+    <!-- [ADR-0033] adult_green/blue/white → 충돌 capsule + Fuel 인체 mesh (다양성). -->
+    <model name="adult_green">
+      <static>true</static>
+      <pose>-1.0 2.0 0.85 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><capsule><radius>0.25</radius><length>1.2</length></capsule></geometry>
+        </collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://yard_female_green</uri>
+      <name>adult_green_mesh</name>
+      <pose>-1.0 2.0 0 0 0 1.5708</pose>
+      <static>true</static>
+    </include>
+
+    <model name="adult_blue">
+      <static>true</static>
+      <pose>3.0 -1.5 0.85 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><capsule><radius>0.25</radius><length>1.2</length></capsule></geometry>
+        </collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://yard_walk_blue</uri>
+      <name>adult_blue_mesh</name>
+      <pose>3.0 -1.5 0 0 0 1.5708</pose>
+      <static>true</static>
+    </include>
+
+    <model name="adult_white">
+      <static>true</static>
+      <pose>0.5 3.0 0.85 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><capsule><radius>0.25</radius><length>1.2</length></capsule></geometry>
+        </collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://yard_female_white</uri>
+      <name>adult_white_mesh</name>
+      <pose>0.5 3.0 0 0 0 1.5708</pose>
+      <static>true</static>
+    </include>
+
+  </world>
+</sdf>

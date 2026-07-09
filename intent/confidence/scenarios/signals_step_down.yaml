@@ -1,0 +1,21 @@
+name: signals_step_down
+description: |
+  모든 신호가 t=5s 에서 0.95 → 0.2 즉시 step. c_raw 0.857 → 0.008 점프 →
+  rate limiter |Δc̃| ≤ dot_c_max·dt clamp 발동. PR #29 의 c_step_down 과
+  *동일한 c_tilde 거동* 을 *raw 신호 수준에서* 재구성 — A3-2 estimator.py
+  의 rate_limit_step 함수가 노드 wiring 후에도 동일 거동인지 검증.
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 5.0
+    type: constant
+    s1: 0.95
+    s2: 0.95
+    s3: 0.95
+    note: 안정 — c_raw ≈ 0.857
+  - duration_s: 20.0
+    type: step
+    s1: 0.2
+    s2: 0.2
+    s3: 0.2
+    note: 즉시 점프 (모든 신호) — c_raw 0.857 → 0.008 + rate limiter clamp

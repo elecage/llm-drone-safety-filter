@@ -1,0 +1,14 @@
+name: attribute_mismatch_label_low
+description: |
+  S5 거실 — OVD detection label swap rate = 1x σ_OVD,nat (자연 분산 수준).
+  ADR-0025 D1.d amendment 9 측 4 variant 중 calibration 의존 끝점. paper §C
+  부록 측 honest 보고 anchor (sim-to-real gap, Gazebo Actor mesh + ogre rendering
+  vs COCO 학습 분포). 1차 default σ=0.05 (5%), 후속 ovd_measure.py 측 정정.
+channel: attribute_mismatch
+variant: attribute_mismatch_label_low
+context_kwargs:
+  vocabulary: [cup, book, mug, chair, table, person, cat]
+  sigma_ovd_label_swap_rate: 0.05
+  sigma_ovd_bbox_px: 10.0
+  dangerous_label: person
+seed: 42

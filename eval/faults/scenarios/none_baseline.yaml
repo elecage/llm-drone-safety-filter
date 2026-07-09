@@ -1,0 +1,8 @@
+name: none_baseline
+description: |
+  baseline trial — no fault transformation. paper §C ADR-0025 D3 격자 측
+  fault_class='none' 5 trial 의 anchor. 자연 σ_LLM,nat / σ_OVD,nat 만 영향.
+channel: none
+variant: null
+context_kwargs: {}
+seed: 42

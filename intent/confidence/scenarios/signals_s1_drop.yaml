@@ -1,0 +1,30 @@
+name: signals_s1_drop
+description: |
+  s2/s3 stable (0.9), s1 만 t=5s 부터 5s 동안 0.95 → 0.2 선형 ramp.
+  *(B) graceful degradation* 입증 — 어느 한 신호가 떨어지면 곱셈형 g 가
+  자동으로 c_raw 끌어내림. fail-safe 플래그 *없이* (s1_absent=false) 산식만으로
+  보수 측 이동. cmsm-proof §10.5 (CA-2) (OVD 정확성 가정) 약화 시나리오와 정합.
+publish_rate_hz: 10
+finish_hover_s: 3.0
+segments:
+  - duration_s: 5.0
+    type: constant
+    s1: 0.95
+    s2: 0.9
+    s3: 0.9
+    note: 안정 — c_raw ≈ 0.769
+  - duration_s: 5.0
+    type: ramp
+    s1_from: 0.95
+    s1_to: 0.2
+    s2_from: 0.9
+    s2_to: 0.9
+    s3_from: 0.9
+    s3_to: 0.9
+    note: s1 만 0.95→0.2 ramp (referent 모호화) — c_raw 0.769 → 0.162
+  - duration_s: 5.0
+    type: constant
+    s1: 0.2
+    s2: 0.9
+    s3: 0.9
+    note: s1 낮은 상태 hold — graceful 보수 유지

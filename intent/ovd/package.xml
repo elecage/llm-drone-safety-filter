@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>intent_ovd</name>
+  <version>0.0.1</version>
+  <description>
+    Open-Vocabulary Detection (OVD) — YOLO-World 백본 wrapper. *의도해석기*
+    의 ξ_ovd context 채널 (cmsm-proof §10.1) 공급원. 입력 = 카메라 프레임 +
+    텍스트 어휘, 출력 = detection box + class label + confidence. ROADMAP §3
+    B1. ADR-0021 1차 답 = YOLO-World 단일 (ultralytics 경유, Apple Silicon
+    MPS). 코드 구현은 후속 PR — 본 패키지는 스캐폴드 (env install 대상).
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>vision_msgs</depend>
+  <depend>cv_bridge</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

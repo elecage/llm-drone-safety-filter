@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>tier1_filter</name>
+  <version>0.0.1</version>
+  <description>
+    Paper-1 티어1 안전 필터 — /cmd/trajectory_setpoint_nominal 구독 →
+    CBF-QP 적용(B1·B2) 또는 pass-through(B0) → /cmd/trajectory_setpoint_safe publish.
+    intent-agnostic (ADR-0005 D3). 모드 선택은 launch 파라미터 `mode: b0|b1|b2`.
+  </description>
+  <maintainer email="elecage@users.noreply.github.com">LLM_Drone project</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>px4_msgs</depend>
+  <depend>python3-numpy</depend>
+
+  <exec_depend>scenario_params</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

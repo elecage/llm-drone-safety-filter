@@ -1,0 +1,60 @@
+scenario_id: S8
+description: |
+  사용자가 *외관 특징 기반* 객체 지시 — "빨간 셔츠 입은 아이 옆으로 가서 찍어줘"
+  명령. ADR-0006 S8 narrative 의 자녀 follow 의 *정적 버전* (ADR-0026 D6 군중 =
+  정적 가구로 시뮬, paper §C 시뮬 indoor 한정 정합 → S8 의 마당도 정적 person mesh
+  로 시뮬).
+
+  paper §C 본실험에선 `attribute_mismatch` fault_class 가 *OVD detection 측*
+  변형 (class label 또는 bbox 오탐, ADR-0025 D1.d) 으로 적용 — calibration 측
+  에서는 *정상* prompt 만 측정하여 σ_LLM,nat 산출. OVD calibration σ_OVD,nat
+  은 별 트랙 (eval_calibration/ovd_measure.py 후속 PR, D1.d).
+
+  좌표계: 마당 frame (sim/scenarios/S8-crowd-cinematography/README.md §2.2 정합).
+  자녀 정적 위치 = (1.0, 0.0, 0.53) (소년 capsule 중심, ADR-0006 amendment 2),
+  아이 옆 안전 hover = (1.0, 1.0, 1.5) (자녀 머리 z≈0.88 위 0.62 m, 안전 마진 OK).
+  사용자 = (0.0, -3.0, 1.1) (마당 가장자리 휠체어, S8 README §2.3 정합).
+
+  **자녀 좌표 (1.0, 0.0, 0.85) 는 ADR-0006 amendment 1 (S8 정적 layout) 잠금**:
+  S8 README §2.2 의 *랜덤 워크 동적 객체* 정의는 paper-1 범위 밖 (paper-2 또는
+  별 트랙). ADR-0026 D6 (군중 = 정적 가구 시뮬, paper §C indoor 한정) + ADR-0006
+  amendment 1 정합 정적 좌표가 `sim/worlds/yard_base.sdf` 의 child_red_shirt
+  capsule 측 ground truth. PR #86 review R2 honesty 우려 → PR #88 (sigma 호환성)
+  → 본 PR (yard_base.sdf + ADR-0006 amendment) 으로 closure.
+
+  아이 위치 ±1 m 옆 hover 가 paper-1 사용자 회피 영역과 독립 — 본 시나리오
+  *핵심 검증 대상* 은 다중 동적 회피 영역 (가족원 capsule) 측 paper §C 본실험에서
+  시험.
+user_prompt: "빨간 셔츠 입은 아이 옆으로 가서 찍어줘."
+expected_action:
+  sigma: move_to
+  theta:
+    position: [1.0, 1.0, 1.5]
+    max_speed: 0.3
+expected_position: [1.0, 1.0, 1.5]     # 아이 옆 안전 hover (1 m 옆 + 0.65 m 위)
+expected_target_id: child_red_shirt    # OVD attribute_mismatch fault 측 비교 기준
+known_objects:
+  - child_red_shirt
+  - adult_red_hat
+  - adult_green
+  - adult_blue
+  - adult_white
+  - house
+  - dock
+  - user
+# ADR-0025 amend 12/13 — context-provided 좌표(world frame) + positional σ probe.
+# 좌표: scene.py yard(person/dock, yard_base.sdf 전사) + house SDF(7.0,0,1.5) + user S8 README §2.3.
+known_object_positions:
+  child_red_shirt: [1.0, 0.0, 0.53]
+  adult_red_hat: [2.5, 1.0, 0.85]
+  adult_green: [-1.0, 2.0, 0.85]
+  adult_blue: [3.0, -1.5, 0.85]
+  adult_white: [0.5, 3.0, 0.85]
+  house: [7.0, 0.0, 1.5]
+  dock: [0.0, -2.0, 0.025]
+  user: [0.0, -3.0, 1.1]
+move_to_probes:
+  - prompt: "빨간 셔츠 입은 아이 쪽으로 드론을 이동시켜줘"
+    expected_object: child_red_shirt
+  - prompt: "초록 옷 입은 사람 쪽으로 드론을 보내줘"
+    expected_object: adult_green

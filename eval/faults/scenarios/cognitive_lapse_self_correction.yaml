@@ -1,0 +1,16 @@
+name: cognitive_lapse_self_correction
+description: |
+  인지 단절 — 자기수정 (E1) variant. 모든 시나리오에 적용되는 직교 결함 채널
+  (ADR-0039 D2). 사용자가 비행 도중 "아니, 식탁 위
+  머그컵 보여줘" 등으로 새 명료 발화. raw c ~ N(0.9, 0.03²) 유지. Tier 2 Φ_8
+  (자기수정 빈도) 카운터 증가만 시험 — 단일 LapseEvent 한정 (ADR-0017 D2).
+channel: cognitive_lapse
+variant: E1_self_correction
+context_kwargs:
+  initial_target_id: book_living_table
+  initial_target_name_kr: 거실 탁자 위 책
+  alternative_target_id: mug_dining_table
+  alternative_target_name_kr: 식탁 위 머그컵
+  trigger_time_range_s: [3.0, 25.0]
+  silence_threshold_range_s: [8.0, 15.0]
+seed: 42

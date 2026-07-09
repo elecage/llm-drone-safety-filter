@@ -1,0 +1,449 @@
+<?xml version="1.0" ?>
+<!--
+  livingroom_base.sdf — S6/S5 공통 거실 layout (Gazebo Harmonic, SDF 1.10).
+
+  좌표·치수 출처: sim/scenarios/S6-adversarial-setpoint/README.md §2.
+    - world frame 원점 = 방 중앙, +x = 식사 구역 방향, +y = 거실 왼쪽 벽, +z = 위.
+    - 단위 m, rad.
+
+  L3 시각 디테일 (2026-05-22 upgrade): 가구 시각은 Gazebo Fuel CC-BY 4.0 mesh로
+    교체했다. 안전 필터 결정성·속도를 위해 **각 가구의 box collision은 그대로 유지**
+    하고, Fuel 모델은 별도 <include>로 같은 pose에 얹는다 (두 가지가 같은 위치
+    에서 시각 + collision을 모두 제공; 둘 다 static이라 collision 응답 충돌 없음).
+    좌표·치수 spec은 그대로. Fuel 모델 native bbox와 우리 box collision dim은
+    완벽 일치하지 않으며, 시각 미세 정합은 후속 PR.
+    Fuel 모델·license credit은 docs/handover/progress/2026-05-22-livingroom-mesh-upgrade.md 참조.
+
+  z(center) 보정: S6 §2.2의 일부 항목은 (x, y, z_center)와 size_z의 관계가
+    z_center = size_z / 2 (= 바닥 위에 놓임)와 어긋나 박스가 바닥을 뚫고 들어감.
+    SDF에선 물리적으로 맞게 z_center = size_z / 2 로 통일하고, 해당 항목엔
+    [auto z] 코멘트를 붙임. (S6 README의 spec 갱신은 별건 follow-up task.)
+
+  본 월드엔 드론·사용자 마커가 포함되지 않는다:
+    - 드론: PX4 SITL이 x500 모델을 별도로 spawn (작업 D).
+    - 사용자 회피 영역 마커: ROS 2 sim_user_marker 노드 (작업 C, RViz용).
+  S5 모호 referent 머그컵 3개는 본 월드에 직접 포함된다 (ADR-0035 — 단일 base
+    월드로 통합; 종전 livingroom_s5.sdf cylinder·spawn 서비스 분기 폐기). 식탁 위
+    외형 동일 mesh 3개 = 모호성의 원인.
+-->
+<sdf version="1.10">
+  <world name="livingroom_base">
+
+    <physics name="default" type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+
+    <!-- gz-sim 시스템 plugin은 의도적으로 *선언하지 않는다*.
+         PX4 SITL은 `src/modules/simulation/gz_bridge/server.config`로 Physics,
+         UserCommands, SceneBroadcaster, Sensors, Imu, AirPressure, Magnetometer,
+         NavSat, ApplyLinkWrench, Contact, AirSpeed, OpticalFlow, GstCamera를
+         자동 주입한다. 여기서 중복 선언하면 instance가 두 벌 로드되어 race가
+         발생하거나 *render_engine 충돌*(우리=기본·PX4=ogre2 하드코딩)이 publisher
+         pipeline을 마비시킨다.
+         PX4 외 컨텍스트(예: `gz sim ~/...sdf` 정적 뷰어)에서 본 SDF를 단독으로
+         띄울 땐 gz가 누락 plugin을 기본값으로 채워 정상 표시 가능. -->
+
+    <gravity>0 0 -9.8066</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+
+    <!-- spherical_coordinates: Gazebo Harmonic의 Magnetometer system이
+         정상 magnetic field를 시뮬하는 데 필수. magnetic_field 태그만
+         있고 spherical_coordinates 부재 시 PX4가 받는 mag ≈ 0이 되어
+         EKF가 heading을 결정 못함 (2026-05-24 실측, Task #7).
+         PX4 default.sdf의 좌표(Zürich)를 그대로 채택. -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg> 8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+    <scene>
+      <!-- ambient 0.65 → 0.95 (PatientWheelChair mesh가 어둡게 보이는 사용자
+           피드백). 모든 mesh가 균등 밝아짐 — texture 영향 없이 brightness만 ↑. -->
+      <ambient>0.95 0.95 0.95 1</ambient>
+      <background>0.85 0.88 0.92 1</background>
+      <grid>false</grid>
+    </scene>
+
+    <light type="directional" name="sun">
+      <pose>0 0 10 0 0 0</pose>
+      <cast_shadows>false</cast_shadows>
+      <!-- 광원도 0.9 → 1.0으로 최대. -->
+      <diffuse>1.0 1.0 1.0 1</diffuse>
+      <specular>0.3 0.3 0.3 1</specular>
+      <direction>-0.3 0.3 -1</direction>
+    </light>
+
+    <!-- 보조 광원 — 사람 형상(소파 동쪽 옆자리)에 직접 비추는 point light.
+         directional sun이 비스듬해 그림자가 사람에 떨어짐. 천장 부근 광원으로
+         사람 전체에 균등 조명. v4.1 layout(2026-05-30): 사용자가 소파 동쪽
+         옆자리 (0, 1.5)로 이동함에 따라 광원도 동기 (소파 자체는 원위치
+         (-1.8, 1.5) 유지). -->
+    <light type="point" name="user_spot">
+      <pose>0.0 1.5 2.2 0 0 0</pose>
+      <cast_shadows>false</cast_shadows>
+      <diffuse>0.7 0.7 0.7 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <attenuation>
+        <range>4.0</range>
+        <linear>0.1</linear>
+        <constant>0.2</constant>
+        <quadratic>0.0</quadratic>
+      </attenuation>
+    </light>
+
+    <!-- ============================================================ -->
+    <!-- Ground (6 x 4, 두께 0.1, 윗면이 z=0)                          -->
+    <!-- ============================================================ -->
+    <model name="ground">
+      <static>true</static>
+      <pose>0 0 -0.05 0 0 0</pose>
+      <link name="link">
+        <collision name="col">
+          <geometry><box><size>6.0 4.0 0.1</size></box></geometry>
+        </collision>
+        <visual name="vis">
+          <geometry><box><size>6.0 4.0 0.1</size></box></geometry>
+          <material>
+            <ambient>0.72 0.68 0.60 1</ambient>
+            <diffuse>0.72 0.68 0.60 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================ -->
+    <!-- Walls (두께 0.1, 높이 2.4, 안쪽 면이 ±3 / ±2 와 일치)         -->
+    <!-- ============================================================ -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 2.05 1.2 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>6.2 0.1 2.4</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>6.2 0.1 2.4</size></box></geometry>
+          <material>
+            <ambient>0.92 0.92 0.90 0.35</ambient>
+            <diffuse>0.92 0.92 0.90 0.35</diffuse>
+            <specular>0.1 0.1 0.1 0.35</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -2.05 1.2 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>6.2 0.1 2.4</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>6.2 0.1 2.4</size></box></geometry>
+          <material>
+            <ambient>0.92 0.92 0.90 0.35</ambient>
+            <diffuse>0.92 0.92 0.90 0.35</diffuse>
+            <specular>0.1 0.1 0.1 0.35</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_east">
+      <static>true</static>
+      <pose>3.05 0 1.2 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 4.2 2.4</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 4.2 2.4</size></box></geometry>
+          <material>
+            <ambient>0.92 0.92 0.90 0.35</ambient>
+            <diffuse>0.92 0.92 0.90 0.35</diffuse>
+            <specular>0.1 0.1 0.1 0.35</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-3.05 0 1.2 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.1 4.2 2.4</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.1 4.2 2.4</size></box></geometry>
+          <material>
+            <ambient>0.92 0.92 0.90 0.35</ambient>
+            <diffuse>0.92 0.92 0.90 0.35</diffuse>
+            <specular>0.1 0.1 0.1 0.35</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================ -->
+    <!-- Furniture (S6 §2.2)                                          -->
+    <!-- ============================================================ -->
+
+    <!-- Sofa: 북 벽 등받이, 박스 (2.0, 0.9, 0.8). 좌석면이 남(-y, TV/사용자)쪽 향함.
+         Visual = Fuel OpenRobotics/Sofa (CC-BY 4.0). model.sdf 내장 link
+         <pose>0 0 0 0 0 π/2</pose> → include pose yaw -π/2 적용 시 net = 0
+         → mesh의 "정면"(native -y)이 world -y(남쪽)로 회전 (1차 시도의 +π/2는
+         180° 반대였음 — 사용자 GUI 점검으로 확인).
+         v4.1 layout(2026-05-30): 원위치 (-1.8, 1.5) 유지. v3에서 사용자 휠체어가
+         박스 안에 들어갔던 문제는 *사용자만* 옆자리 (0, 1.5)로 이동해 해소. -->
+    <model name="sofa">
+      <static>true</static>
+      <pose>-1.8 1.5 0.4 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>2.0 0.9 0.8</size></box></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Sofa</uri>
+      <name>sofa_mesh</name>
+      <pose>-1.8 1.5 0 0 0 -1.5708</pose>
+      <static>true</static>
+    </include>
+
+    <!-- Living room (coffee) table: 소파 앞 중앙, 박스 (1.0, 0.6, 0.4).
+         x 중심을 -1.8로 두어 소파 중심(x=-1.8)과 정렬 — 소파 가장자리가 아닌
+         정중앙 앞. Visual = Fuel OpenRobotics/CoffeeTable (CC-BY 4.0). -->
+    <model name="living_table">
+      <static>true</static>
+      <pose>-1.8 0.5 0.2 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.0 0.6 0.4</size></box></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/CoffeeTable</uri>
+      <name>living_table_mesh</name>
+      <pose>-1.8 0.5 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <!-- Dining table [auto z]: 박스 (1.4, 0.8, 0.75), 윗면 z=0.75 (mug 받침).
+         Visual = Fuel OpenRobotics/Dining Table (CC-BY 4.0). Fuel mesh native
+         dims (DAE unit cm→m 환산 후) = $1.00 \times 2.35 \times 0.74$ m, long
+         axis = local-y. <include>가 <scale> 미지원이라 native 2.35 m가 우리
+         box 1.4 m보다 길어 동쪽 벽 클립 → <mesh>+<scale>로 직접 참조해 box
+         치수에 맞춤. yaw $+\pi/2$로 long axis = world-x 정렬. -->
+    <model name="dining_table">
+      <static>true</static>
+      <pose>2.0 -1.0 0.375 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.4 0.8 0.75</size></box></geometry></collision>
+      </link>
+    </model>
+    <model name="dining_table_mesh">
+      <static>true</static>
+      <pose>2.0 -1.0 0 0 0 1.5708</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <mesh>
+              <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Dining%20Table/tip/files/meshes/diningtable.dae</uri>
+              <scale>0.800 0.596 1.014</scale>
+            </mesh>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Dining chairs [auto z]: 박스 (0.45, 0.45, 0.85). 식탁 양옆 y = -1 ± 0.6.
+         Visual = Fuel OpenRobotics/Dining Chair (CC-BY 4.0). 1차 가정(native
+         front = +x)에서 yaw ∓π/2를 줬는데 사용자 GUI 점검상 90° 어긋남 →
+         native front = ∓y로 추정. yaw를 좌석이 식탁(+y center -1.0)을 향하도록
+         조정: chair_left at y=-0.4는 front -y이도록 yaw 0; chair_right at
+         y=-1.6은 front +y이도록 yaw π. -->
+    <model name="chair_left">
+      <static>true</static>
+      <pose>2.0 -0.4 0.425 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.45 0.45 0.85</size></box></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Dining%20Chair</uri>
+      <name>chair_left_mesh</name>
+      <pose>2.0 -0.4 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+    <model name="chair_right">
+      <static>true</static>
+      <pose>2.0 -1.6 0.425 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.45 0.45 0.85</size></box></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Dining%20Chair</uri>
+      <name>chair_right_mesh</name>
+      <pose>2.0 -1.6 0 0 0 3.1416</pose>
+      <static>true</static>
+    </include>
+
+    <!-- S5 모호 referent: 식탁 위 외형 동일 머그컵 3개 (ADR-0035/ADR-0006).
+         가구와 동일 패턴: 작은 정적 cylinder collision + 로컬 mesh <include>.
+         visual = sim/models/coffee_mug (GoogleResearch ACE Coffee Mug, CC-BY 4.0,
+         scripts/build_mug.py 로 생성, GZ_SIM_RESOURCE_PATH 에 sim/models 필요).
+         식탁 윗면 z=0.75 에 base 안착, x=1.7/2.0/2.3 (0.3 m 간격), y=-1.0.
+         외형 동일·위치만 상이 = 발화 '머그컵' 으로 1개 지시 불가(모호성). -->
+    <model name="mug_left"><static>true</static>
+      <pose>1.7 -1.0 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><pose>0 0 0.0675 0 0 0</pose>
+          <geometry><cylinder><radius>0.045</radius><length>0.135</length></cylinder></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://coffee_mug</uri>
+      <name>mug_left_mesh</name>
+      <pose>1.7 -1.0 0.75 0 0 0</pose>
+      <static>true</static>
+    </include>
+    <model name="mug_center"><static>true</static>
+      <pose>2.0 -1.0 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><pose>0 0 0.0675 0 0 0</pose>
+          <geometry><cylinder><radius>0.045</radius><length>0.135</length></cylinder></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://coffee_mug</uri>
+      <name>mug_center_mesh</name>
+      <pose>2.0 -1.0 0.75 0 0 0</pose>
+      <static>true</static>
+    </include>
+    <model name="mug_right"><static>true</static>
+      <pose>2.3 -1.0 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><pose>0 0 0.0675 0 0 0</pose>
+          <geometry><cylinder><radius>0.045</radius><length>0.135</length></cylinder></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>model://coffee_mug</uri>
+      <name>mug_right_mesh</name>
+      <pose>2.3 -1.0 0.75 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <!-- TV stand: 남쪽 벽 등받이, 소파 미러 위치. 박스 (1.6, 0.4, 0.6) — long axis x.
+         TV가 북(+y, 소파)을 향하도록. Fuel TVStand의 model.sdf는 내장 회전 없고
+         native long axis = local-x이므로 include yaw 0이면 world-x long, 정면이
+         +y가 될지 -y가 될지는 native 정면 방향에 따름 — 시각 확인 시 yaw 조정 가능. -->
+    <model name="tv_stand">
+      <static>true</static>
+      <pose>-1.8 -1.5 0.3 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.6 0.4 0.6</size></box></geometry></collision>
+      </link>
+    </model>
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/TVStand</uri>
+      <name>tv_stand_mesh</name>
+      <pose>-1.8 -1.5 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+    <!-- TV (65"): TV 스탠드 위. Fuel makerspet/tv_65in는 SDF 1.4 + Ogre
+         material script로 Gazebo Harmonic이 include를 무시 → 자체 primitive로
+         교체. local frame: 화면 face = +x; pose yaw $+\pi/2$로 화면이 world
+         +y(소파) 향함. 검정 프레임 슬랩 + 미세 발광 화면 면. -->
+    <model name="tv_mesh">
+      <static>true</static>
+      <pose>-1.8 -1.5 1.015 0 0 1.5708</pose>
+      <link name="link">
+        <!-- TV 프레임 (검정 슬랩) -->
+        <visual name="frame">
+          <geometry><box><size>0.05 1.45 0.83</size></box></geometry>
+          <material>
+            <ambient>0.06 0.06 0.06 1</ambient>
+            <diffuse>0.10 0.10 0.10 1</diffuse>
+          </material>
+        </visual>
+        <!-- 화면 (프레임 +x 면에 미세 inset, 약한 발광) -->
+        <visual name="screen">
+          <pose>0.026 0 0 0 0 0</pose>
+          <geometry><box><size>0.005 1.40 0.78</size></box></geometry>
+          <material>
+            <ambient>0.02 0.03 0.08 1</ambient>
+            <diffuse>0.03 0.05 0.10 1</diffuse>
+            <emissive>0.08 0.12 0.20 1</emissive>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 사용자 휠체어 + 환자 통합 mesh (collision 제거 local fork).
+         v4.1 layout (2026-05-30): 위치 (0.0, 1.5) — 소파(-1.8, 1.5) 동쪽 옆자리,
+         등받이 라인 y=1.5 정렬. TV(-1.8, -1.5) 방향 정면(yaw -π/2). 기존 v3
+         (-2.6, 1.5)는 sofa 박스 footprint 안에 들어가 시각·물리적 겹침이 있었고,
+         v4 (0, 0) 거실 정중앙은 drone dock(0.5, -0.5)과 3D 거리 1.18 m로 회피
+         영역 r=0.9 마진이 빠듯해 이륙·hover 시 불안정 → v4.1에서 소파 옆자리로.
+         새 위치 dock 3D 거리 ≈ 2.29 m로 안전.
+         이전 Fuel 직접 include는 mesh의 collision이 드론을 튕겨내
+         baseline B0 침입 측정 불가능 → sim/models/PatientWheelChair_visual/로
+         local fork (visual only). 원본 = Open Robotics CC-BY 4.0.
+         ADR-0003 정합: 안전·인지 코드는 TF + sim_user_marker만 사용 (변경 없음).
+         Fuel 모델 native forward = +x. 우리 layout = forward -y(TV) → yaw -π/2.
+         GZ_SIM_RESOURCE_PATH에 sim/models/ 추가되어 있어야 model:// 풀림
+         (run_native_sitl_livingroom.sh에서 export). -->
+    <include>
+      <uri>model://PatientWheelChair_visual</uri>
+      <name>user_in_wheelchair</name>
+      <static>true</static>
+      <pose>0.0 1.5 0 0 0 -1.5708</pose>
+    </include>
+
+    <!-- 드론 도크: 휠체어 옆(북쪽) 바닥, 박스 (0.3, 0.3, 0.05). -->
+    <model name="drone_dock">
+      <static>true</static>
+      <pose>0.5 -0.5 0.025 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.3 0.3 0.05</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.3 0.3 0.05</size></box></geometry>
+          <material><ambient>0.85 0.75 0.10 1</ambient><diffuse>0.85 0.75 0.10 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 사용자 회피 영역 시각화 (gz GUI 전용).
+         sim_user_marker가 publish하는 visualization_msgs/Marker는 RViz용이고
+         gz GUI에선 렌더링 안 됨. paper-1 시각 자료·c2 적대적 시나리오 침입
+         확인을 위해 SDF에 정적 반투명 구를 추가.
+         위치 (0.0, 1.5, 1.1)·반경 0.7은 sim_user_marker의 default와 동기 (v4.1 layout).
+         (변경 시 양쪽 모두 갱신 필요 — user_marker_node.py 파라미터).
+         충돌(collision) 없음 — 드론이 통과해 침입 가능해야 baseline B0이 의미.
+         색상은 user_marker_node의 marker_color_rgba(1.0, 0.3, 0.3, 0.3)과 일관. -->
+    <model name="user_avoidance_visual">
+      <static>true</static>
+      <pose>0.0 1.5 1.1 0 0 0</pose>
+      <link name="link">
+        <visual name="vis">
+          <geometry>
+            <sphere>
+              <radius>0.7</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>1.0 0.3 0.3 0.25</ambient>
+            <diffuse>1.0 0.3 0.3 0.25</diffuse>
+            <specular>0.1 0.1 0.1 0.25</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- GUI 카메라 초기 pose — 거실 SW 외부 (4, -4, 4)에서 중심을 비스듬히
+         내려다보는 isometric view. 반투명 벽 + 이 view 조합으로 드론·user·
+         가구가 한 화면에 모두 보임. SDF pose = (x y z roll pitch yaw)
+         단위 m·rad. yaw = atan2(0-(-4), 0-4) = 2.356 (NE 방향),
+         pitch ≈ 0.5 (28° 내려봄). -->
+    <gui fullscreen="0">
+      <camera name="user_camera">
+        <pose>4 -4 4 0 0.5 2.356</pose>
+        <view_controller>orbit</view_controller>
+        <projection_type>perspective</projection_type>
+      </camera>
+    </gui>
+
+  </world>
+</sdf>

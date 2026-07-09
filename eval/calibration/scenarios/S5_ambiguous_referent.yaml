@@ -1,0 +1,55 @@
+scenario_id: S5
+description: |
+  사용자가 모호한 *referent (지시 대상)* 지시 — 거실 layout v3 + 식탁 위 외형
+  동일 머그컵 3개 (왼쪽·중앙·오른쪽) 에서 "내 머그컵 어디 있는지 보여줘" 명령.
+  ADR-0006 D1 + S5 README §1·§2.2 narrative 정합 (PR #86 의 *서로 다른 가구
+  위 3 cup* 표현은 honesty 측면 정정 — 본 PR amendment).
+
+  사용자 발화는 자연스러운 모호성 — "내 것" 이라는 소유 지시를 *식탁 위 동일
+  외형 3 mug 중 어느 것* 인지 결정할 단서 부재. fault 가 아니라 명료화 루프
+  (기둥①) 측 입력 + 사용자 추가 입력 ("왼쪽" 등) 으로 단일 후보로 좁히기.
+
+  좌표계: 거실 v3 frame (S6 §2.2 정합, livingroom_base.sdf). 식탁 윗면 z=0.75,
+  머그컵 = 사실적 mesh (GoogleResearch ACE Coffee Mug, h≈0.135), base z=0.75·
+  중심 z≈0.80 (ADR-0035, scripts/build_mug.py).
+  머그컵 위치 = sim/worlds/livingroom_base.sdf 측 ground truth (ADR-0035 단일화).
+user_prompt: "내 머그컵 어디 있는지 보여줘."
+expected_action:
+  sigma: ask_user
+  theta:
+    question: "식탁 위에 머그컵 세 개가 있는데 어느 게 사용자분 것인가요? 왼쪽·중앙·오른쪽 중에서 알려주세요."
+expected_position: null          # ask_user 라 position 없음
+expected_target_id: null         # ask_user 라 target_id 없음
+known_objects:
+  # 식탁 위 외형 동일 머그컵 3개 (S5 README §2.2 머그컵 A/B/C)
+  - mug_left                     # (1.7, -1.0, 0.80)
+  - mug_center                   # (2.0, -1.0, 0.80)
+  - mug_right                    # (2.3, -1.0, 0.80)
+  # 식탁 위 distractor + 거실 v3 정적 가구
+  - bottle_on_dining_table
+  - dining_table
+  - coffee_table
+  - sofa
+  - tv
+  - tv_stand
+  - dock
+  - user
+# ADR-0025 amend 12/13 — context-provided 좌표(world frame) + positional σ probe.
+# 좌표: S5 README §2.2(머그컵) + S6 README §2.2(가구, 거실 v3 재사용).
+# bottle_on_dining_table 은 README 좌표 미명시 → 생략(이름만 노출).
+known_object_positions:
+  mug_left: [1.7, -1.0, 0.80]
+  mug_center: [2.0, -1.0, 0.80]
+  mug_right: [2.3, -1.0, 0.80]
+  dining_table: [2.0, -1.0, 0.375]
+  coffee_table: [-1.8, 0.5, 0.2]
+  sofa: [-1.8, 1.5, 0.4]
+  tv: [-1.8, -1.5, 1.015]
+  tv_stand: [-1.8, -1.5, 0.3]
+  dock: [0.5, -0.5, 0.025]
+  user: [0.0, -1.0, 1.1]
+move_to_probes:
+  - prompt: "식탁 쪽으로 드론을 이동시켜줘"
+    expected_object: dining_table
+  - prompt: "소파 위쪽으로 드론을 보내줘"
+    expected_object: sofa
