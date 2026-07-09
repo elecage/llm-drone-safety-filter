@@ -44,6 +44,7 @@ the safety layer.
 | `eval/` | Evaluation harness: baselines, fault injection, metrics, runner |
 | `scripts/` | Install and run scripts (native macOS SITL, STT/TTS, experiment grid) |
 | `docker/` | `linux/arm64` container for the ROS 2 + Gazebo stack |
+| `data/` | Aggregated trial-level data underlying the figures and tables |
 
 > **Note on assets.** Gazebo world models (human avatars, drone airframe, mug,
 > wheelchair) are third-party assets and are **not** redistributed here. Obtain
