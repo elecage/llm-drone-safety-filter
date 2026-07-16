@@ -58,7 +58,7 @@ def _call(sigma, theta, c, *, geofence, known, idle, state,
 def test_case6_monitoring_high_confidence_accept(geofence, known, idle, healthy_state):
     """move_to (monitoring), c >= c_hi, valid CC, no spec violation → accept."""
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.9,
+        'move_to', {'target_id': 'sofa'}, 0.9,
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
     assert r.decision == Decision.ACCEPT
@@ -67,7 +67,7 @@ def test_case6_monitoring_high_confidence_accept(geofence, known, idle, healthy_
 def test_case6_monitoring_in_confirm_band_still_accept(geofence, known, idle, healthy_state):
     """monitoring 클래스는 c ∈ [c_lo, c_hi) 여도 accept (case 5 조건 미충족)."""
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.5,
+        'move_to', {'target_id': 'sofa'}, 0.5,
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
     assert r.decision == Decision.ACCEPT
@@ -118,7 +118,7 @@ def test_case4_contradicts_overrides_high_confidence_to_confirm(
     """High c + valid command but contradicts σ_prev → confirm (not accept)."""
     r = _call(
         'return_to_dock', {}, 0.95,
-        sigma_prev='move_to', theta_prev={'position': (1.0, 0.0, 1.0), 'max_speed': 0.3},
+        sigma_prev='move_to', theta_prev={'target_id': 'sofa'},
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
     assert r.decision == Decision.CONFIRM
@@ -129,7 +129,7 @@ def test_case4_no_contradicts_passes_through(geofence, known, idle, healthy_stat
     """compatible sequence (move_to → inspect, activity IDLE) → accept."""
     r = _call(
         'inspect', {'target_id': 'sofa', 'viewpoint': 'overview'}, 0.9,
-        sigma_prev='move_to', theta_prev={'position': (1.0, 0.0, 1.0), 'max_speed': 0.3},
+        sigma_prev='move_to', theta_prev={'target_id': 'sofa'},
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
     assert r.decision == Decision.ACCEPT
@@ -137,13 +137,23 @@ def test_case4_no_contradicts_passes_through(geofence, known, idle, healthy_stat
 
 # ---- Case 3 REJECT (spec violation) ----
 
-def test_case3_geofence_violation_rejects(geofence, known, idle, healthy_state):
+def test_case3_unknown_move_target_rejects(geofence, known, idle, healthy_state):
     r = _call(
-        'move_to', {'position': (5.0, 0.0, 1.0), 'max_speed': 0.3}, 0.9,
+        'move_to', {'target_id': 'banana'}, 0.9,
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
-    # 이 입력은 CC-2 (geofence)가 먼저 잡음 → case 1 reject.
-    # Φ_1 검증은 catalog 동치 — 어느 case에서 잡혀도 reject 결과 동일.
+    # ADR-0049 D1 — 장면 미등록 대상은 CC-2 콘텐츠 검사가 잡음 → case 1 reject.
+    # (종전 geofence-밖 position 케이스는 좌표가 스키마 밖이 되어 표현 불가 —
+    #  지오펜스는 운용 가드·티어 0 담당, ADR-0049 D3.)
+    assert r.decision == Decision.REJECT
+
+
+def test_case1_coordinate_move_rejected_categorically(geofence, known, idle, healthy_state):
+    """ADR-0049 D1 — 지오펜스 안 유효 좌표라도 position 은 스키마 밖 → reject."""
+    r = _call(
+        'move_to', {'position': (1.0, 0.0, 1.0), 'max_speed': 0.3}, 0.9,
+        geofence=geofence, known=known, idle=idle, state=healthy_state,
+    )
     assert r.decision == Decision.REJECT
 
 
@@ -165,7 +175,7 @@ def test_case3_low_battery_blocks_monitoring(geofence, known, idle):
         battery_pct=20.0, tier1_active=True, user_confirmed=True,
     )
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.9,
+        'move_to', {'target_id': 'sofa'}, 0.9,
         geofence=geofence, known=known, idle=idle, state=low_battery,
     )
     assert r.decision == Decision.REJECT
@@ -205,7 +215,7 @@ def test_case3_tier1_dead_blocks_everything(geofence, known, idle):
         tier1_active=False, user_confirmed=True, battery_pct=80.0,
     )
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.9,
+        'move_to', {'target_id': 'sofa'}, 0.9,
         geofence=geofence, known=known, idle=idle, state=dead,
     )
     assert r.decision == Decision.REJECT
@@ -217,7 +227,7 @@ def test_case3_n_sc_threshold_blocks(geofence, known, idle):
         n_sc=DEFAULT.N_sc, user_confirmed=True, battery_pct=80.0,
     )
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.9,
+        'move_to', {'target_id': 'sofa'}, 0.9,
         geofence=geofence, known=known, idle=idle, state=saturated,
     )
     assert r.decision == Decision.REJECT
@@ -230,7 +240,7 @@ def test_case3_confirm_timeout_blocks(geofence, known, idle):
         user_confirmed=True, battery_pct=80.0,
     )
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.9,
+        'move_to', {'target_id': 'sofa'}, 0.9,
         geofence=geofence, known=known, idle=idle, state=timed_out,
     )
     assert r.decision == Decision.REJECT
@@ -241,7 +251,7 @@ def test_case3_confirm_timeout_blocks(geofence, known, idle):
 
 def test_case2_low_confidence_rejects(geofence, known, idle, healthy_state):
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.3,
+        'move_to', {'target_id': 'sofa'}, 0.3,
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
     assert r.decision == Decision.REJECT
@@ -251,7 +261,7 @@ def test_case2_low_confidence_rejects(geofence, known, idle, healthy_state):
 def test_case2_boundary_at_c_lo_passes_to_next_case(geofence, known, idle, healthy_state):
     """c == c_lo 는 strict < c_lo 아님 → case 2 미발동, 다음 case 진입."""
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, DEFAULT.c_lo,
+        'move_to', {'target_id': 'sofa'}, DEFAULT.c_lo,
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
     # monitoring 이므로 case 5 미발동 → accept.
@@ -284,7 +294,7 @@ def test_case2_move_to_low_confidence_still_rejects(geofence, known, idle, healt
     """A2 는 inspect 만 면제 — move_to(명시 위치)는 저신뢰도 reject 유지
     (적대적 move_to 의 게이트 방어 보존)."""
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.3,
+        'move_to', {'target_id': 'sofa'}, 0.3,
         geofence=geofence, known=known, idle=idle, state=healthy_state,
     )
     assert r.decision == Decision.REJECT
@@ -338,7 +348,7 @@ def test_case2_precedes_case3(geofence, known, idle):
     """저신뢰도 + 사양 위반 동시 → case 2 (Φ_4) 가 먼저 발동."""
     dead = GateState(tier1_active=False, battery_pct=80.0, user_confirmed=True)
     r = _call(
-        'move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.1,
+        'move_to', {'target_id': 'sofa'}, 0.1,
         geofence=geofence, known=known, idle=idle, state=dead,
     )
     assert r.decision == Decision.REJECT
@@ -351,7 +361,7 @@ def test_case3_precedes_case4(geofence, known, idle):
     dead = GateState(tier1_active=False, battery_pct=80.0, user_confirmed=True)
     r = _call(
         'return_to_dock', {}, 0.9,
-        sigma_prev='move_to', theta_prev={'position': (1.0, 0.0, 1.0), 'max_speed': 0.3},
+        sigma_prev='move_to', theta_prev={'target_id': 'sofa'},
         geofence=geofence, known=known, idle=idle, state=dead,
     )
     assert r.decision == Decision.REJECT  # contradicts confirm 아님
@@ -362,7 +372,7 @@ def test_case3_precedes_case4(geofence, known, idle):
 
 def test_gate_is_pure(geofence, known, idle, healthy_state):
     """같은 입력 N회 호출 시 같은 출력."""
-    args = ('move_to', {'position': (1.0, 1.0, 1.0), 'max_speed': 0.3}, 0.9)
+    args = ('move_to', {'target_id': 'sofa'}, 0.9)
     r1 = _call(*args, geofence=geofence, known=known, idle=idle, state=healthy_state)
     r2 = _call(*args, geofence=geofence, known=known, idle=idle, state=healthy_state)
     r3 = _call(*args, geofence=geofence, known=known, idle=idle, state=healthy_state)

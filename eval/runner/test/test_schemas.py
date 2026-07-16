@@ -146,6 +146,49 @@ class TestTrialSpecInvariant:
             )
 
 
+class TestConfidenceSource:
+    """confidence_source 필드 (ADR-0050 D7) — 기본 live·synthetic 검증·trial_id 접미."""
+
+    def _spec(self, confidence_source='live') -> TrialSpec:
+        return TrialSpec(
+            scenario_id='S5',
+            baseline_config=b2_config(),
+            fault_scenario=_make_none_fault(),
+            episode_id=0,
+            seed=0,
+            confidence_source=confidence_source,
+        )
+
+    def test_default_live(self) -> None:
+        """미지정 시 'live' 기본 — 기존 격자 backward compat."""
+        spec = TrialSpec(
+            scenario_id='S5', baseline_config=b2_config(),
+            fault_scenario=_make_none_fault(), episode_id=0, seed=0,
+        )
+        assert spec.confidence_source == 'live'
+
+    def test_synthetic_valid(self) -> None:
+        assert self._spec('synthetic:c_constant_1').confidence_source == 'synthetic:c_constant_1'
+
+    def test_invalid_string_rejected(self) -> None:
+        with pytest.raises(ValueError, match='confidence_source'):
+            self._spec('bogus')
+
+    def test_empty_profile_rejected(self) -> None:
+        with pytest.raises(ValueError, match='프로파일명'):
+            self._spec('synthetic:')
+
+    def test_type_rejected(self) -> None:
+        with pytest.raises(TypeError, match='confidence_source'):
+            self._spec(confidence_source=1.0)  # type: ignore[arg-type]
+
+    def test_live_trial_id_no_suffix(self) -> None:
+        assert '__c-' not in self._spec('live').trial_id
+
+    def test_synthetic_trial_id_suffix(self) -> None:
+        assert self._spec('synthetic:c_stall').trial_id.endswith('__c-c_stall')
+
+
 class TestTrialId:
     def test_format_none_fault(self) -> None:
         spec = TrialSpec(

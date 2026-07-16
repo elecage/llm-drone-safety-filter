@@ -429,3 +429,44 @@ class TestEstimatorReport:
         assert d['s3_absent'] is True
         assert d['delta_c_clamped'] is True
         assert d['c_raw'] == pytest.approx(0.504)
+
+
+class TestExternalModeContract:
+    """external 모드(ADR-0050 D7 안 B) 핵심 계약 — pure 레벨 앵커.
+
+    노드 timer·subscriber wiring 은 colcon test Docker 트랙 검증. 본 클래스는
+    external 모드가 의존하는 *rate_limit_step 누적 + stall-hold* 계약을 host 에서
+    앵커한다(_on_timer_external 이 매 틱 rate_limit_step(외부 raw c, 이전 c̃, dt,
+    dot_c_max)를 적용하고, 외부 갱신이 없어도 마지막 raw c 로 계속 발행).
+    """
+
+    def test_rate_limited_descent_then_hold(self):
+        """외부 raw c=0.5 고정, 1.0에서 시작 → dot_c_max 로 감속 후 0.5 hold."""
+        dot_c_max = 0.833
+        dt = 0.1  # 10Hz
+        c_tilde = 1.0
+        c_raw = 0.5  # 외부에서 주입된 목표
+        traj = []
+        for _ in range(11):
+            c_tilde = rate_limit_step(c_raw, c_tilde, dt, dot_c_max)
+            traj.append(c_tilde)
+        # 첫 스텝 = 1.0 - min(0.5, 0.0833) = 0.9167
+        assert traj[0] == pytest.approx(1.0 - dot_c_max * dt, abs=1e-4)
+        # 단조 비증가
+        assert all(traj[i] >= traj[i + 1] - 1e-9 for i in range(len(traj) - 1))
+        # 목표 도달 후 hold
+        assert traj[-1] == pytest.approx(0.5, abs=1e-6)
+
+    def test_stall_holds_last_value(self):
+        """stall(외부 갱신 부재) 구간 — 마지막 raw c 로 rate_limit_step 이 값 유지.
+
+        external 모드는 stall 중에도 _external_c_raw(마지막 값)로 매 틱 발행하므로,
+        tier1 은 정지 구간 내내 유효 신뢰도를 받는다(D3 지연 독립성 실증 기반).
+        """
+        dot_c_max = 0.833
+        dt = 0.1
+        c_raw = 0.5
+        c_tilde = 0.5  # 이미 목표 도달 상태에서 stall 진입
+        for _ in range(8):  # 8틱 stall — 외부 raw c 갱신 없음(값 고정)
+            c_tilde = rate_limit_step(c_raw, c_tilde, dt, dot_c_max)
+            assert c_tilde == pytest.approx(0.5, abs=1e-6)

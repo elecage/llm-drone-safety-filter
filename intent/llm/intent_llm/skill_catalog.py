@@ -6,11 +6,11 @@
 
 | 스킬 σ | 인자 도메인 $\\mathcal{D}_\\sigma$ | action_class |
 |---|---|---|
-| `move_to` | `position`: 지오펜스 안 $\\mathbb{R}^3$, `max_speed` ∈ [0, 0.5] m/s | monitoring |
+| `move_to` | `target_id` ∈ known_objects **또는** `direction` ∈ {forward, back, left, right, up, down} (exactly-one-of; 좌표 `position` 은 스키마 밖 — ADR-0049 D1) | monitoring |
 | `inspect` | `target_id` ∈ known_objects, `viewpoint` ∈ {overview, close, top} | monitoring |
 | `return_to_dock` | () | return |
 | `emergency_land` | () | return |
-| `ask_user` | `question`: str, `options`: list[str] | confirm |
+| `ask_user` | `question`: str (비어있지 않음; `options` 는 선택 — ADR-0013 Amendment 2026-07-13) | confirm |
 
 action_class 측 ADR-0013 D3 시간논리 사양 $\\Phi_3$ (confirm 강제) · $\\Phi_{10}$
 (명령 모순) 등 측 처분 분류.

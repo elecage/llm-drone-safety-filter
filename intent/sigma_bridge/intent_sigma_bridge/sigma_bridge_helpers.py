@@ -327,6 +327,38 @@ def apply_vertical_floor(z: float, floor_m: float) -> float:
     return max(z, floor_m)
 
 
+def clamp_to_geofence_local(
+    x: float,
+    y: float,
+    z: float,
+    *,
+    bounds_world: tuple[float, float, float, float, float, float],
+    spawn: tuple[float, float, float],
+) -> Vec3:
+    """setpoint (local ENU) 를 운용 지오펜스 AABB 안으로 클램프 (ADR-0049 D3).
+
+    게이트의 종전 move_to 좌표 지오펜스 검사(CC-2)가 의미 인자 계약(ADR-0049
+    D1)으로 좌표를 못 보게 되면서, 해소 좌표의 지오펜스 책임이 운용 가드로
+    내려온 것의 코드화. direction 오프셋(수평 2 m)이 펜스를 나갈 수 있어
+    실질 필요. 티어 0 (PX4 지오펜스) 는 최종 방벽으로 별도 잔존.
+
+    Args:
+        x, y, z: setpoint local ENU [m] (world − spawn).
+        bounds_world: (xmin, xmax, ymin, ymax, zmin, zmax) world 좌표 AABB.
+        spawn: (spawn_x, spawn_y, spawn_z) world 좌표 — local 변환 오프셋.
+
+    Returns:
+        AABB 안으로 성분별 클램프된 (x, y, z). 경계 자체는 허용 (inclusive).
+    """
+    xmin, xmax, ymin, ymax, zmin, zmax = bounds_world
+    sx, sy, sz = spawn
+    return (
+        min(max(x, xmin - sx), xmax - sx),
+        min(max(y, ymin - sy), ymax - sy),
+        min(max(z, zmin - sz), zmax - sz),
+    )
+
+
 # ---------------------------------------------------------------------------
 # inspect vantage 자동화 (ADR-0031)
 # ---------------------------------------------------------------------------

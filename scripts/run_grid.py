@@ -156,14 +156,30 @@ def run_one(container: str, item: dict, output_root: str, backbone: str,
         f"--episode {item['episode']} --output-root {output_root} "
         f"--backbone {backbone} --episode-timeout-s {episode_timeout_s}"
     )
+    # ADR-0050 D7 — 합성 신뢰도 격리 셀은 confidence_source='synthetic:<profile>'.
+    # plan(plan_to_json_obj)이 좌표로 방출 → 컨테이너가 동일 TrialSpec 재구성.
+    # 'live'(기본)일 땐 부착하지 않는다 — eval-runner-one default 와 동일이라 live 런의
+    # 명령줄이 이 기능 도입 전과 *바이트 동일*하게 유지된다(backward compat). 이러면
+    # host `run_grid.py` 만 갱신되고 컨테이너가 stale(신규 `--confidence-source` 미지원)
+    # 이어도 live 런은 안 깨진다. synthetic 경로는 fetch_plan 이 먼저 `--confidence-profiles`
+    # 로 stale 을 조기 차단하고(eval-runner/-one 은 동일 colcon 패키지라 원자적 갱신),
+    # 이때만 `--confidence-source` 를 전달한다.
+    conf_src = item.get('confidence_source', 'live')
+    if conf_src != 'live':
+        one += f" --confidence-source {conf_src}"
     # ADR-0039 D3-②: per-trial wrapper(edge_llm/cloud_llm)의 LLM inference latency
     # JSONL 을 bag 과 같은 trial 출력 디렉터리에 남기도록 TRIAL_LOG_DIR 전파. 컨테이너
     # cwd=/workspace(repo 마운트)라 /workspace 하위 경로면 호스트에 그대로 남음.
     # _write_trial_log 가 makedirs(exist_ok) → 디렉터리 사전 생성 불요.
     trial_root = output_root if os.path.isabs(output_root) else f'/workspace/{output_root}'
     trial_log_dir = f"{trial_root}/{backbone}/{item['trial_id']}"
+    extra_env = {'TRIAL_LOG_DIR': trial_log_dir}
+    # ADR-0050 D2 제동 버퍼 실험 — host env 에 설정 시 컨테이너 per-trial launch
+    # (compose_trial_node_specs)의 tier1 로 전파(미설정 시 off, 기존 거동).
+    if os.environ.get('TIER1_BRAKE_BUFFER_M'):
+        extra_env['TIER1_BRAKE_BUFFER_M'] = os.environ['TIER1_BRAKE_BUFFER_M']
     return subprocess.run(
-        _dexec_prefix(container, {'TRIAL_LOG_DIR': trial_log_dir}) + [_sourced(one)],
+        _dexec_prefix(container, extra_env) + [_sourced(one)],
         check=False,
     ).returncode
 
@@ -191,6 +207,8 @@ def _build_grid_args(args: argparse.Namespace) -> List[str]:
         parts.append('--baselines ' + ' '.join(args.baselines))
     if args.faults:
         parts.append('--faults ' + ' '.join(args.faults))
+    if args.confidence_profiles:
+        parts.append('--confidence-profiles ' + ' '.join(args.confidence_profiles))
     parts.append(f'--n-episodes {args.n_episodes}')
     parts.append(f'--output-root {args.output_root}')
     parts.append(f'--backbone {args.backbone}')
@@ -207,6 +225,12 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
                     help='baseline mode (default 컨테이너 전체)')
     ap.add_argument('--faults', nargs='+', default=None,
                     help='fault name (default 컨테이너 전체 5종)')
+    ap.add_argument('--confidence-profiles', nargs='+', default=None,
+                    dest='confidence_profiles',
+                    help='합성 신뢰도 프로파일 name (ADR-0050 D7 격리 격자) — 격자를 '
+                         '프로파일별로 확장. 미지정=live(현행). --track-b 와 결합해 '
+                         '하한 검증 격자를 c≈1·중간·시변/정지로 격리 시험. '
+                         '예: c_constant_1 c_constant_mid c_stall.')
     ap.add_argument('--n-episodes', type=int, default=10, dest='n_episodes')
     ap.add_argument('--output-root', default='results/trials', dest='output_root')
     ap.add_argument('--backbone', default='gemma-4-e4b')

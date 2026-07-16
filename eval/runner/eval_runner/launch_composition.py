@@ -47,6 +47,7 @@ ablation chain 정합 (발화 publisher 는 상수라 *차이* 불변):
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Tuple
 
@@ -169,7 +170,12 @@ NODE_NAME_INTENT_LLM = 'intent_llm_wrapper'
 NODE_NAME_CONTEXT_GRAPH = 'intent_context_graph'
 NODE_NAME_TIER2_GATE = 'tier2_gate'
 NODE_NAME_ESTIMATOR = 'intent_confidence_estimator'
+NODE_NAME_CONF_PUBLISHER = 'intent_confidence_publisher'
 NODE_NAME_INJECTOR = 'fault_injector'
+
+# ADR-0050 D7 안 B — 합성 신뢰도 격리에서 publisher_node → estimator external
+# 사이의 raw c 토픽. estimator external_c_topic 기본값과 정합.
+SYNTHETIC_C_TOPIC = '/intent/c_synthetic_raw'
 NODE_NAME_ROSBAG = 'rosbag2_record'
 NODE_NAME_UTTERANCE = 'trial_utterance_pub'
 
@@ -239,16 +245,22 @@ def compose_trial_node_specs(
         s: (_chain[i], _chain[i + 1]) for i, s in enumerate(_sigma_stages)
     }
 
-    # 1. tier1_filter — 항상.
+    # 1. tier1_filter — 항상. brake_buffer_m 은 ADR-0050 D2 제동 버퍼 실험 파라미터
+    # (기본 0.0 = off, 기존 거동·정리 불변). 환경변수 TIER1_BRAKE_BUFFER_M 로만 켜서
+    # 격리 검증 격자에서 CBF-ZOH overshoot 흡수를 시험한다(본 격자 밖 실험은 미설정).
+    tier1_params: Dict[str, Any] = {
+        'mode': config.tier1_mode,
+        'scenario': trial.scenario_id,
+    }
+    _brake_buffer = os.environ.get('TIER1_BRAKE_BUFFER_M')
+    if _brake_buffer:
+        tier1_params['brake_buffer_m'] = float(_brake_buffer)
     specs.append(NodeSpec(
         package='tier1_filter',
         executable='filter_node',
         name=NODE_NAME_TIER1,
         kind='node',
-        parameters={
-            'mode': config.tier1_mode,
-            'scenario': trial.scenario_id,
-        },
+        parameters=tier1_params,
     ))
 
     # 2. context_graph (선택) — context_aug=True 측만.
@@ -317,27 +329,48 @@ def compose_trial_node_specs(
     # (estimator_mode='live': OVD detections→s1, LLM σ→s2/s3). synthesis 는 단위·
     # 격리 검증 도구일 뿐 본실험 c 출처가 아니다(ADR-0029 D1). 종전엔 estimator_mode
     # 미전달 → 기본 synthesis 인데 scenario_file 도 미전달 → init 크래시였음(P4-2 발견).
+    # ADR-0050 D7 안 B — confidence_source='synthetic:<profile>' 이면 estimator 를
+    # external 모드로 두고 publisher_node 가 raw c 프로파일을 SYNTHETIC_C_TOPIC 로
+    # 발행 → estimator 가 rate_limit_step 만 적용해 재발행. 변화율 제한기를 estimator
+    # 단일(ADR-0020 D9)로 유지해 배포 토폴로지(estimator→tier1) 보존(Figure 1 정합).
+    is_synthetic_c = trial.confidence_source.startswith('synthetic:')
     estimator_params: Dict[str, Any] = {
         'scenario': trial.scenario_id,
-        'estimator_mode': 'live',
+        'estimator_mode': 'external' if is_synthetic_c else 'live',
     }
     if trial.scenario_id in VALID_SCENARIO_IDS:
         estimator_params['dot_c_max'] = tier1_cbf_params(trial.scenario_id)['dot_c_max']
-    # ADR-0029 D-A4 fault remap. attribute_mismatch → s1 source(ovd detections)는
-    # estimator 토픽 override. hallucination 은 세션 49 인라인화로 σ 가 SIGMA_FINAL
-    # (=estimator 기본 sigma_raw_topic /intent/llm_sigma_raw)에 실리므로 remap 불요
-    # (체인 최종 = 변형된 σ). estimator 는 actuation σ(체인 최종)를 그대로 소비.
-    if fault_channel == FaultChannel.ATTRIBUTE_MISMATCH:
-        estimator_params['ovd_detection_topic'] = FAULT_CHANNEL_FAULTED_TOPIC[
-            FaultChannel.ATTRIBUTE_MISMATCH
-        ]
-    # B4 c-배선 정정(2026-06-22, ADR-0025 amendment): tier2 활성 시 estimator 가 *게이트
-    # 입력*(pre-gate σ)을 읽어야 c 가 게이트 결정 시점에 가용하다. 게이트 출력
-    # (SIGMA_FINAL)은 accept 시만 발행되므로 estimator 가 그걸 읽으면 c↔게이트 순환
-    # (게이트 c 미수신→reject→SIGMA_FINAL 무발행→estimator 무입력). 비-tier2 는
-    # SIGMA_FINAL(=actuation σ) 기본값 그대로(불변). 게이트 입력 = _stage_io['gate'][0].
-    if config.tier2_enabled:
-        estimator_params['sigma_raw_topic'] = _stage_io['gate'][0]
+    if is_synthetic_c:
+        # external 모드: raw c 를 publisher 에서 구독. live 전용 remap(ovd·sigma)은
+        # 신호 합성이 없으므로 미적용.
+        estimator_params['external_c_topic'] = SYNTHETIC_C_TOPIC
+        profile = trial.confidence_source[len('synthetic:'):]
+        specs.append(NodeSpec(
+            package='intent_confidence',
+            executable='publisher_node',
+            name=NODE_NAME_CONF_PUBLISHER,
+            kind='node',
+            parameters={
+                'scenario_file': f'{profile}.yaml',
+                'output_topic': SYNTHETIC_C_TOPIC,
+            },
+        ))
+    else:
+        # ADR-0029 D-A4 fault remap. attribute_mismatch → s1 source(ovd detections)는
+        # estimator 토픽 override. hallucination 은 세션 49 인라인화로 σ 가 SIGMA_FINAL
+        # (=estimator 기본 sigma_raw_topic /intent/llm_sigma_raw)에 실리므로 remap 불요
+        # (체인 최종 = 변형된 σ). estimator 는 actuation σ(체인 최종)를 그대로 소비.
+        if fault_channel == FaultChannel.ATTRIBUTE_MISMATCH:
+            estimator_params['ovd_detection_topic'] = FAULT_CHANNEL_FAULTED_TOPIC[
+                FaultChannel.ATTRIBUTE_MISMATCH
+            ]
+        # B4 c-배선 정정(2026-06-22, ADR-0025 amendment): tier2 활성 시 estimator 가 *게이트
+        # 입력*(pre-gate σ)을 읽어야 c 가 게이트 결정 시점에 가용하다. 게이트 출력
+        # (SIGMA_FINAL)은 accept 시만 발행되므로 estimator 가 그걸 읽으면 c↔게이트 순환
+        # (게이트 c 미수신→reject→SIGMA_FINAL 무발행→estimator 무입력). 비-tier2 는
+        # SIGMA_FINAL(=actuation σ) 기본값 그대로(불변). 게이트 입력 = _stage_io['gate'][0].
+        if config.tier2_enabled:
+            estimator_params['sigma_raw_topic'] = _stage_io['gate'][0]
     # cognitive_lapse(→ /intent/lapse_event) 소비자(wrapper/tier2) wiring 은 미구현
     # (ADR-0029 D-A4 별 항목) — injector 가 이벤트를 발행하나 현재 소비 노드 없음.
     specs.append(NodeSpec(
@@ -456,7 +489,8 @@ def expected_node_count(trial: TrialSpec) -> int:
     """B0/B1/B2/B3/B4 측 expected node count = 6/6/6/7/8.
 
     test 측 *합성 결과* ↔ *expected count* 측 정합 검증 측 helper. (ADR-0030 F5
-    per-trial 발화 publisher 추가로 종전 5/5/5/6/7 → +1.)
+    per-trial 발화 publisher 추가로 종전 5/5/5/6/7 → +1.) confidence_source=
+    'synthetic:*' 이면 publisher_node 1개 추가 (ADR-0050 D7 안 B).
     """
     config = trial.baseline_config
     count = 6  # tier1 + intent_llm + estimator + injector + rosbag2 + utterance_pub
@@ -464,4 +498,6 @@ def expected_node_count(trial: TrialSpec) -> int:
         count += 1  # context_graph
     if config.tier2_enabled:
         count += 1  # tier2_gate
+    if trial.confidence_source.startswith('synthetic:'):
+        count += 1  # confidence publisher_node (external 모드 입력원)
     return count

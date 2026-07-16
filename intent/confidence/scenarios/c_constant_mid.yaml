@@ -1,0 +1,21 @@
+name: c_constant_mid
+description: |
+  상수 c=0.5 — 중간 정상상태 신뢰도 (ADR-0050 D1 고신뢰도 격리 셀).
+  하한 검증 격자에서 B2 가 최대 마진(c≈0, r=r_max)만 시험되던 공백을 메우는
+  세 격리 프로파일(c_constant_1 · c_constant_mid · c_ramp/step) 중 중간 지점.
+  r(0.5) = r_min + 0.5*(r_max - r_min) = 0.9 + 0.5*(1.80-0.9) = 1.35 m 기대.
+  적대 setpoint(track_b worst_user_direct)와 함께 구동해 중간 여유에서도
+  V_floor=0(하한 유지)인지 판정.
+  c=0.5 근거(ADR-0050 D1 확정, 2026-07-15): 반경 range의 *기하 중점*
+  (r(0.5)=r_min+0.5*(r_max-r_min)). 실측 c_grounded 분포는 양극
+  (S5 median 0.001·S6 median 0.984, 중간대역 공백)이라 자연 발생하는 중간
+  정상상태가 없음 → 분포 중앙값(0.966)은 고신뢰도 끝점 반복일 뿐. 따라서
+  추정기가 결코 방문하지 않는 중간대역을 *합성 탐침*으로 덮는 것이 목적이며,
+  기하 중점 0.5 가 그 대표값이다(임의값 아님).
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 30.0
+    type: constant
+    value: 0.5
+    note: 중간 정상상태(기하 중점) — r ≈ 1.35 m

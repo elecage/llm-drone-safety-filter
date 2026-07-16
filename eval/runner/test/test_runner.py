@@ -67,6 +67,47 @@ class TestSelectTrials:
         with pytest.raises(ValueError):
             runner.select_trials(_cfg(tmp_path, limit=-1))
 
+    def test_confidence_profiles_expand(self, tmp_path) -> None:
+        """ADR-0050 D7 — 프로파일 지정 시 격자 ×|profiles|, 각 synthetic:<profile>."""
+        cfg = _cfg(tmp_path, scenarios=['S5', 'S6'], baselines=['b0', 'b2'],
+                   faults=['none_baseline'], n_episodes=2,
+                   confidence_profiles=('c_constant_1', 'c_stall'))
+        trials = runner.select_trials(cfg)
+        assert len(trials) == 2 * 2 * 1 * 2 * 2  # +프로파일 축
+        assert {t.confidence_source for t in trials} == {
+            'synthetic:c_constant_1', 'synthetic:c_stall',
+        }
+
+    def test_confidence_profiles_default_live(self, tmp_path) -> None:
+        """미지정(기본 ()) → 전 cell live, trial_id 접미 없음(기존 격자 불변)."""
+        trials = runner.select_trials(_cfg(tmp_path))
+        assert all(t.confidence_source == 'live' for t in trials)
+        assert all('__c-' not in t.trial_id for t in trials)
+
+
+class TestPlanJsonCli:
+    def test_main_plan_json_threads_confidence_profiles(
+        self, tmp_path, capsys,
+    ) -> None:
+        """main(--plan-json --confidence-profiles) → 확장된 plan JSON 방출(CLI 배선)."""
+        rc = runner.main([
+            '--plan-json',
+            '--scenarios', 'S5',
+            '--baselines', 'b2',
+            '--faults', 'none_baseline',
+            '--confidence-profiles', 'c_constant_1', 'c_constant_mid',
+            '--n-episodes', '2',
+            '--output-root', str(tmp_path / 'trials'),
+        ])
+        assert rc == 0
+        obj = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+        # 1 baseline × 1 fault × 2 ep × 2 profile = 4
+        assert len(obj['trials']) == 4
+        assert {t['confidence_source'] for t in obj['trials']} == {
+            'synthetic:c_constant_1', 'synthetic:c_constant_mid',
+        }
+        assert all('confidence_source' in t for t in obj['trials'])
+
 
 class TestTrialBagDir:
     def test_path_includes_backbone_and_trial_id(self, tmp_path) -> None:

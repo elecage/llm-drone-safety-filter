@@ -71,8 +71,30 @@ class TrialSpec:
     fault_scenario: FaultScenario
     episode_id: int
     seed: int
+    confidence_source: str = 'live'
 
     def __post_init__(self) -> None:
+        if not isinstance(self.confidence_source, str):
+            raise TypeError(
+                f'confidence_source 는 str 여야 함, '
+                f'got {type(self.confidence_source).__name__}'
+            )
+        # 'live' (기본, 배포 경로: estimator live 합성) 또는 'synthetic:<profile>'
+        # (ADR-0050 D7 안 B: publisher_node raw c → estimator external 모드).
+        if self.confidence_source != 'live' and not self.confidence_source.startswith(
+            'synthetic:'
+        ):
+            raise ValueError(
+                f"confidence_source={self.confidence_source!r} 무효 — "
+                f"'live' 또는 'synthetic:<profile>' (ADR-0050 D7)"
+            )
+        if self.confidence_source.startswith('synthetic:') and not (
+            self.confidence_source[len('synthetic:'):]
+        ):
+            raise ValueError(
+                "confidence_source='synthetic:' 에 프로파일명 필수 "
+                "(예: 'synthetic:c_constant_1')"
+            )
         if self.scenario_id not in VALID_SCENARIO_IDS:
             raise ValueError(
                 f'scenario_id={self.scenario_id!r} 무효 — '
@@ -109,12 +131,20 @@ class TrialSpec:
 
         본 식별자가 격자 측 *unique* 보장 — 동일 trial_id 측 두 TrialSpec 측
         다른 seed 측 불가능 (seed 가 5 차원 hash 측 deterministic).
+
+        confidence_source='synthetic:<profile>' 이면 말미에 ``__c-<profile>`` 를
+        덧붙여 프로파일 간 충돌을 막는다 (ADR-0050 D7). 'live' (기본) 는 접미
+        없음 — 기존 격자 trial_id 불변(backward compat).
         """
         variant = self.fault_scenario.variant or 'none'
-        return (
+        base = (
             f'{self.scenario_id}__'
             f'{self.baseline_config.mode.value}__'
             f'{self.fault_scenario.channel.value}__'
             f'{variant}__'
             f'ep{self.episode_id:02d}'
         )
+        if self.confidence_source.startswith('synthetic:'):
+            profile = self.confidence_source[len('synthetic:'):]
+            return f'{base}__c-{profile}'
+        return base

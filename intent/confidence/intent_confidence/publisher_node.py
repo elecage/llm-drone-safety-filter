@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import rclpy
 import yaml
@@ -47,11 +47,13 @@ from std_msgs.msg import Float32
 @dataclass
 class Segment:
     duration_s: float
-    type: str  # 'constant' | 'ramp' | 'step'
+    type: str  # 'constant' | 'ramp' | 'step' | 'stall'
     value: float = 0.0       # constant·step에서 사용
     val_from: float = 0.0    # ramp 시작
     val_to: float = 0.0      # ramp 끝
     note: str = ''
+    # stall: 구간 동안 *발행 자체를 억제* — LLM 지연 급증/무응답 모사(ADR-0050 D3,
+    # RQ3 지연 독립성). 이때 tier1 은 마지막 유효 신뢰도로 매 주기 동작해야 한다.
 
 
 @dataclass
@@ -73,8 +75,10 @@ def load_scenario(path: Path) -> Scenario:
     segments = []
     for s in data.get('segments', []):
         stype = str(s.get('type', 'constant')).lower()
-        if stype not in ('constant', 'ramp', 'step'):
-            raise ValueError(f'segment.type 무효: "{stype}" (constant|ramp|step만 허용)')
+        if stype not in ('constant', 'ramp', 'step', 'stall'):
+            raise ValueError(
+                f'segment.type 무효: "{stype}" (constant|ramp|step|stall만 허용)'
+            )
         common = dict(
             duration_s=float(s['duration_s']),
             type=stype,
@@ -88,6 +92,9 @@ def load_scenario(path: Path) -> Scenario:
                 val_from=_clamp01(float(s['from'])),
                 val_to=_clamp01(float(s['to'])),
             ))
+        elif stype == 'stall':
+            # 발행 억제 구간 — value 불필요(무발행).
+            segments.append(Segment(**common))
         else:
             if 'value' not in s:
                 raise ValueError(f'{stype} segment에 value 필수: {s}')
@@ -158,10 +165,11 @@ class ConfidencePublisherNode(Node):
         period = 1.0 / self.scenario.publish_rate_hz
         self._timer = self.create_timer(period, self._on_timer)
 
-    def _eval_at(self, elapsed_s: float) -> float:
+    def _eval_at(self, elapsed_s: float) -> Optional[float]:
         """현재 elapsed에서의 c 값 평가.
 
         finish_hover 구간은 마지막 segment의 *종료 값*을 hold.
+        stall segment 구간은 발행 억제를 뜻하는 None 을 반환한다(ADR-0050 D3).
         """
         if elapsed_s >= self._total_segments_end_s:
             return self._final_value()
@@ -180,34 +188,48 @@ class ConfidencePublisherNode(Node):
         elif seg.type == 'step':
             value = seg.value  # 즉시 점프 후 끝까지 hold (segment 내부 균등 = constant와 동일,
                                # *시나리오 레벨*에서 직전 segment 대비 점프 의미).
+        elif seg.type == 'stall':
+            self._log_segment_entry(idx, elapsed_s)
+            return None  # 발행 억제 — LLM 무응답 모사.
         else:  # ramp
             frac = seg_t / max(seg.duration_s, 1e-9)
             frac = max(0.0, min(1.0, frac))
             value = seg.val_from + frac * (seg.val_to - seg.val_from)
 
-        # 새 segment 진입 로그.
-        if idx != self._last_logged_segment:
-            note_str = f' — {seg.note}' if seg.note else ''
-            if seg.type == 'ramp':
-                desc = f'ramp {seg.val_from:.2f} → {seg.val_to:.2f}'
-            else:
-                desc = f'{seg.type} {seg.value:.2f}'
-            self.get_logger().info(
-                f'[intent_c] segment {idx+1}/{len(self.scenario.segments)} '
-                f'(t={elapsed_s:.1f}s, dur={seg.duration_s:.1f}s) {desc}{note_str}'
-            )
-            self._last_logged_segment = idx
-
+        self._log_segment_entry(idx, elapsed_s)
         return _clamp01(value)
 
+    def _log_segment_entry(self, idx: int, elapsed_s: float) -> None:
+        """새 segment 진입 시 1회 로그."""
+        if idx == self._last_logged_segment:
+            return
+        seg = self.scenario.segments[idx]
+        note_str = f' — {seg.note}' if seg.note else ''
+        if seg.type == 'ramp':
+            desc = f'ramp {seg.val_from:.2f} → {seg.val_to:.2f}'
+        elif seg.type == 'stall':
+            desc = 'stall (발행 억제)'
+        else:
+            desc = f'{seg.type} {seg.value:.2f}'
+        self.get_logger().info(
+            f'[intent_c] segment {idx+1}/{len(self.scenario.segments)} '
+            f'(t={elapsed_s:.1f}s, dur={seg.duration_s:.1f}s) {desc}{note_str}'
+        )
+        self._last_logged_segment = idx
+
     def _final_value(self) -> float:
-        """마지막 segment의 종료 값."""
-        if not self.scenario.segments:
-            return 1.0
-        last = self.scenario.segments[-1]
-        if last.type == 'ramp':
-            return _clamp01(last.val_to)
-        return _clamp01(last.value)
+        """마지막 segment의 종료 값.
+
+        마지막이 stall 이면 직전 non-stall segment 의 종료 값으로 hold
+        (stall 로 시나리오가 끝나는 구성은 권장하지 않음 — resume segment 를 둘 것).
+        """
+        for seg in reversed(self.scenario.segments):
+            if seg.type == 'stall':
+                continue
+            if seg.type == 'ramp':
+                return _clamp01(seg.val_to)
+            return _clamp01(seg.value)
+        return 1.0
 
     def _on_timer(self) -> None:
         elapsed_s = (self.get_clock().now().nanoseconds - self._start_ns) * 1e-9
@@ -224,6 +246,8 @@ class ConfidencePublisherNode(Node):
             return
 
         c = self._eval_at(elapsed_s)
+        if c is None:
+            return  # stall 구간 — 발행 억제(LLM 무응답 모사, ADR-0050 D3).
         self._publish(c)
 
     def _publish(self, c: float) -> None:

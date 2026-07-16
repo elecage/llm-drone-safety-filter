@@ -10,6 +10,7 @@ import pytest
 from intent_sigma_bridge.sigma_bridge_helpers import (
     _segment_closest_distance_to_point,
     apply_vertical_floor,
+    clamp_to_geofence_local,
     candidate_cluster_center,
     compute_detour_waypoint,
     compute_radial_escape,
@@ -620,3 +621,40 @@ class TestWrapAngle:
         # 170° 와 -170° 의 차이는 최단 20° (340° 아님) — yaw 정렬 판정 핵심.
         err = wrap_angle(math.radians(170) - math.radians(-170))
         assert abs(err) == pytest.approx(math.radians(20), abs=1e-6)
+
+
+# ==================================================================== clamp_to_geofence_local
+
+
+class TestClampToGeofenceLocal:
+    """ADR-0049 D3 — 운용 가드 지오펜스 클램프 (거실 AABB, spawn 원점 기준)."""
+
+    BOUNDS = (-3.0, 3.0, -2.0, 2.0, 0.0, 2.4)
+    SPAWN = (0.0, 0.0, 0.0)
+
+    def test_inside_unchanged(self) -> None:
+        assert clamp_to_geofence_local(
+            1.0, -1.0, 1.5, bounds_world=self.BOUNDS, spawn=self.SPAWN,
+        ) == pytest.approx((1.0, -1.0, 1.5))
+
+    def test_direction_offset_beyond_fence_clamped(self) -> None:
+        # 실질 필요 사례 — drone x=2.0 에서 direction 'right' (+2 m) → x=4.0 > xmax.
+        assert clamp_to_geofence_local(
+            4.0, 0.0, 1.5, bounds_world=self.BOUNDS, spawn=self.SPAWN,
+        ) == pytest.approx((3.0, 0.0, 1.5))
+
+    def test_boundary_inclusive(self) -> None:
+        assert clamp_to_geofence_local(
+            3.0, 2.0, 2.4, bounds_world=self.BOUNDS, spawn=self.SPAWN,
+        ) == pytest.approx((3.0, 2.0, 2.4))
+
+    def test_all_axes_clamped(self) -> None:
+        assert clamp_to_geofence_local(
+            -9.0, 9.0, 9.0, bounds_world=self.BOUNDS, spawn=self.SPAWN,
+        ) == pytest.approx((-3.0, 2.0, 2.4))
+
+    def test_spawn_offset_shifts_local_bounds(self) -> None:
+        # spawn=(1,1,0) → world xmax 3.0 은 local 2.0.
+        assert clamp_to_geofence_local(
+            3.0, 0.0, 1.0, bounds_world=self.BOUNDS, spawn=(1.0, 1.0, 0.0),
+        ) == pytest.approx((2.0, 0.0, 1.0))

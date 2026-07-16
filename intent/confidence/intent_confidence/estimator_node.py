@@ -2,7 +2,7 @@
 
 ADR-0020 D1 (곱셈형 g) + D4 (rate limiter, cmsm-proof §6) 의 *ROS 2 노드 래퍼*.
 
-두 입력 모드 ([ADR-0020 Amendment 2026-05-31](../../../docs/handover/decisions/0020-confidence-estimator-g-form-lock.md)):
+세 입력 모드 ([ADR-0020 Amendment 2026-05-31](../../../docs/handover/decisions/0020-confidence-estimator-g-form-lock.md) · external 은 [ADR-0050 D7](../../../docs/handover/decisions/0050-ijcas-review-remediation-scope.md)):
 
   - **synthesis** (default): YAML 시나리오 (`signals_*.yaml`) 의 raw 신호 시계열을
     `evaluate_signals_at` 으로 합성 재생. paper §C calibration 분포 재생 + 수식
@@ -10,10 +10,18 @@ ADR-0020 D1 (곱셈형 g) + D4 (rate limiter, cmsm-proof §6) 의 *ROS 2 노드 
   - **live**: 실 OVD/LLM 출력 위 산출. `/intent/ovd/detections` (Detection2DArray)
     → s1, `/intent/llm_sigma_raw` (signals) → s2/s3. paper §C sweep 의 strict
     e2e 길 (RQ1 입증 본실험). 토픽 미수신·신호 부재 → raw c=0 fail-safe (D3).
+  - **external** (ADR-0050 D7 안 B): 외부(publisher_node)가 발행하는 raw c 를
+    `external_c_topic`(기본 `/intent/c_synthetic_raw`)로 구독 → `rate_limit_step`
+    만 적용(compute_g 생략) → 동일 output 토픽 재발행. 합성 신뢰도 격리 실험
+    (D1 고신뢰도·D3 지연 주입)에서 임의 c(t) 프로파일을 tier1 에 주입하되
+    변화율 제한기를 estimator 단일(ADR-0020 D9)로 유지 → 배포 토폴로지
+    (estimator→tier1) 보존(Figure 1 정합). raw c 미수신·stall 구간엔 마지막
+    값을 hold 한 채 timer 로 계속 발행(실 estimator 도 자체 timer 로 항상 발행).
 
 publisher_node 와의 차이:
-  - publisher_node : YAML 의 c 시계열을 *직접* /intent/grounding_confidence publish.
-  - estimator_node : raw 신호 (s1, s2, s3) → compute_g → rate_limit_step → 동일 토픽.
+  - publisher_node : YAML 의 c 시계열을 raw 로 발행 (external 모드의 입력원).
+  - estimator_node[external] : 그 raw c 에 rate_limit_step 적용 후 재발행.
+  - estimator_node[live/synthesis] : raw 신호 (s1,s2,s3) → compute_g → rate_limit_step.
 
 진단 채널 (ADR-0020 D3 amendment):
   - /intent/estimator/report (std_msgs/String JSON) — EstimatorReport dataclass.
@@ -85,7 +93,7 @@ class EstimatorNode(Node):
         super().__init__('intent_confidence_estimator')
 
         # --- 공통 파라미터 ---
-        self.declare_parameter('estimator_mode', 'synthesis')  # 'synthesis' | 'live'
+        self.declare_parameter('estimator_mode', 'synthesis')  # 'synthesis' | 'live' | 'external'
         self.declare_parameter('output_topic', '/intent/grounding_confidence')
         self.declare_parameter('report_topic', '/intent/estimator/report')
         self.declare_parameter('scenario_file', '')
@@ -115,16 +123,21 @@ class EstimatorNode(Node):
         # 연속 'ok' 프레임 동안 유지될 때만 latch 반영 → OVD 단일프레임 중복박스
         # 아티팩트(~0.75% flicker) 기각, 지속적 모호성(S5/S7)만 반영. 10Hz 기준 3=0.3s.
         self.declare_parameter('s1_min_persist_frames', 3)
-        self.declare_parameter('publish_rate_hz', 10.0)   # live 모드 timer 주기
+        self.declare_parameter('publish_rate_hz', 10.0)   # live·external 모드 timer 주기
+        # --- external 모드 전용 (ADR-0050 D7 안 B — 합성 신뢰도 격리) ---
+        # 외부(publisher_node)가 발행하는 raw c 를 구독해 rate_limit_step 만 적용 후
+        # 재발행. compute_g 생략(신호 합성 없음). 변화율 제한기를 estimator 단일
+        # (ADR-0020 D9)로 유지하면서 임의 c(t) 프로파일을 tier1 에 주입한다.
+        self.declare_parameter('external_c_topic', '/intent/c_synthetic_raw')
         # grounding gate (ADR-0031 D3) — sigma_bridge 가 inspect vantage 도달 전
         # 닫는 Bool 토픽. 닫힌 동안 s1 latch 보류(도달 전 빈 s1 동결 차단). 미수신
         # 기본 open(True) — 기존 동작·gate 없는 경로(move_to 등) 보존.
         self.declare_parameter('grounding_gate_topic', '/intent/grounding_gate')
 
         self.mode = str(self.get_parameter('estimator_mode').value).strip().lower()
-        if self.mode not in ('synthesis', 'live'):
+        if self.mode not in ('synthesis', 'live', 'external'):
             raise RuntimeError(
-                f"estimator_mode 는 'synthesis' | 'live': {self.mode!r}"
+                f"estimator_mode 는 'synthesis' | 'live' | 'external': {self.mode!r}"
             )
 
         output_topic = self.get_parameter('output_topic').value
@@ -139,6 +152,8 @@ class EstimatorNode(Node):
 
         if self.mode == 'synthesis':
             self._init_synthesis(dot_c_max_arg, output_topic, report_topic)
+        elif self.mode == 'external':
+            self._init_external(dot_c_max_arg, output_topic, report_topic)
         else:
             self._init_live(dot_c_max_arg, output_topic, report_topic)
 
@@ -254,6 +269,87 @@ class EstimatorNode(Node):
                 rclpy.shutdown()
                 return
             self._timer.cancel()
+
+    # ====================================================================
+    # external 모드 (ADR-0050 D7 안 B — 합성 신뢰도 격리)
+    # ====================================================================
+
+    def _init_external(self, dot_c_max_arg, output_topic, report_topic) -> None:
+        """외부 raw c 구독 → rate_limit_step → 재발행. compute_g 생략.
+
+        publisher_node 가 c(t) 프로파일(constant/ramp/step/stall)을 raw 로
+        발행하면, 본 모드가 변화율 제한기만 적용해 grounding_confidence 로
+        재발행한다 → 변화율 제한기가 estimator 단일(ADR-0020 D9)로 유지되고,
+        tier1 토폴로지(estimator→tier1)가 배포 시스템과 동일(Figure 1 정합).
+
+        raw c 미수신·publisher stall 구간에는 마지막 값을 유지한 채 timer 로
+        계속 발행한다(실 estimator 도 자체 timer 로 항상 발행) → tier1 이 정지
+        구간 내내 유효 신뢰도로 동작함을 보이는 D3 지연 독립성 실증에 사용.
+        """
+        if self.get_parameter('scenario_file').value:
+            self.get_logger().warn(
+                'external 모드: scenario_file 무시됨 (synthesis 전용 파라미터).'
+            )
+        # dot_c_max: YAML 부재 → launch 인자 또는 §7.1 default (live 와 동일).
+        self.dot_c_max = resolve_dot_c_max(dot_c_max_arg, -1.0)
+        self.publish_rate_hz = float(self.get_parameter('publish_rate_hz').value)
+        if self.publish_rate_hz <= 0.0:
+            raise RuntimeError(f'publish_rate_hz 는 양수: {self.publish_rate_hz}')
+        external_topic = str(self.get_parameter('external_c_topic').value)
+
+        # 외부 raw c 상태 — 콜백이 갱신, timer 가 소비. 초기값 = initial_c_tilde
+        # (미수신 구간 hold 값). 첫 수신 전에도 timer 는 이 값으로 발행.
+        self._external_c_raw: float = self.c_tilde
+        self._external_c_seen: bool = False
+
+        self._sub_external = self.create_subscription(
+            Float32, external_topic, self._on_external_c, 10
+        )
+
+        self.get_logger().info(
+            f'estimator_node[external] 시작 — rate={self.publish_rate_hz:.1f}Hz, '
+            f'dot_c_max={self.dot_c_max:.3f}, init c̃={self.c_tilde:.3f}, '
+            f'external_c={external_topic}, output={output_topic}, '
+            f'report={report_topic}'
+        )
+
+        period = 1.0 / self.publish_rate_hz
+        self._last_ns = self._start_ns - int(period * 1e9)
+        self._timer = self.create_timer(period, self._on_timer_external)
+
+    def _on_external_c(self, msg: Float32) -> None:
+        """외부 raw c 수신 — 유한성 검사 + [0,1] 클립 후 보관."""
+        v = float(msg.data)
+        if v != v or v in (float('inf'), float('-inf')):  # NaN/Inf
+            self.get_logger().warn(
+                f'external raw c 비유한값({v}) 수신 → 무시(마지막 값 유지)',
+                throttle_duration_sec=2.0,
+            )
+            return
+        self._external_c_raw = _clamp01(v)
+        self._external_c_seen = True
+
+    def _on_timer_external(self) -> None:
+        now_ns = self.get_clock().now().nanoseconds
+        elapsed_s = (now_ns - self._start_ns) * 1e-9
+        dt = (now_ns - self._last_ns) * 1e-9
+        self._last_ns = now_ns
+
+        c_raw = self._external_c_raw
+        c_tilde_prev = self.c_tilde
+        self.c_tilde = rate_limit_step(c_raw, self.c_tilde, max(dt, 1e-9), self.dot_c_max)
+
+        # 신호 합성 없음 — 세 신호를 부재로 표기(진단 채널에 external 명시).
+        signals = GInputs(
+            s1=0.0, s2=0.0, s3=0.0,
+            s1_absent=True, s2_absent=True, s3_absent=True,
+        )
+        self._publish(
+            signals, idx=-1, elapsed_s=elapsed_s, c_raw=c_raw,
+            c_tilde_prev=c_tilde_prev, dt=dt,
+            scenario_name='external',
+            s1_reason='external' if self._external_c_seen else 'external_prehold',
+        )
 
     # ====================================================================
     # live 모드 (ADR-0020 Amendment 2026-05-31)

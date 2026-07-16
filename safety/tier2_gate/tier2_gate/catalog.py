@@ -1,7 +1,9 @@
 """ADR-0013 D2 — 1차 스킬 카탈로그 + CC-1·CC-2 검증.
 
 cmsm-proof §9.2 명령 계약 (Command Contract)의 코드화. 5 스킬 + 인자 도메인 +
-action_class.  카탈로그·viewpoint 집합·max_speed 상한은 ADR-0013 D2와 동기.
+action_class.  카탈로그·viewpoint 집합은 ADR-0013 D2와 동기.
+``move_to``는 ADR-0049 D1로 의미 인자 계약(target_id | direction)으로 개정 —
+종전 position 3-튜플·max_speed 계약(ADR-0013 D2 원본)은 폐기.
 """
 
 from __future__ import annotations
@@ -31,7 +33,10 @@ CATALOG: frozenset[str] = frozenset(SKILL_ACTION_CLASS.keys())
 """CC-1 — 카탈로그 폐쇄성. paper-1 페르소나 = 정찰·모니터링·호출 카메라-only."""
 
 INSPECT_VIEWPOINTS: frozenset[str] = frozenset({'overview', 'close', 'top'})
-MOVE_TO_MAX_SPEED_HI: float = 0.5  # ADR-0013 D2: max_speed ∈ [0, 0.5] m/s.
+MOVE_TO_DIRECTIONS: frozenset[str] = frozenset(
+    {'forward', 'back', 'left', 'right', 'up', 'down'}
+)
+"""ADR-0049 D1 — sigma_bridge `_DIRECTION_OFFSETS`·ESM Table S4와 동기."""
 
 
 @dataclass(frozen=True)
@@ -86,7 +91,7 @@ def validate_command(
         return ValidationResult(False, f'CC-1: unknown skill "{sigma}"')
 
     if sigma == 'move_to':
-        return _validate_move_to(theta, geofence=geofence)
+        return _validate_move_to(theta, known_objects=known_objects)
     if sigma == 'inspect':
         return _validate_inspect(theta, known_objects=known_objects)
     if sigma in ('return_to_dock', 'emergency_land'):
@@ -96,26 +101,44 @@ def validate_command(
     raise AssertionError(f'카탈로그에 있으나 validator 없음: {sigma}')
 
 
-def _validate_move_to(theta: Mapping[str, Any], *, geofence: Geofence) -> ValidationResult:
-    pos = theta.get('position')
-    if not isinstance(pos, (tuple, list)) or len(pos) != 3:
-        return ValidationResult(False, 'CC-2: move_to.position must be 3-tuple')
-    try:
-        position = (float(pos[0]), float(pos[1]), float(pos[2]))
-    except (TypeError, ValueError):
-        return ValidationResult(False, 'CC-2: move_to.position not numeric')
-    if not geofence.contains(position):
-        return ValidationResult(
-            False, f'CC-2: move_to.position {position} outside geofence'
-        )
+def _validate_move_to(
+    theta: Mapping[str, Any], *, known_objects: frozenset[str]
+) -> ValidationResult:
+    """ADR-0049 D1 — 의미 인자 계약 (ADR-0027 D9 출력 스키마와 동기).
 
-    max_speed = theta.get('max_speed')
-    if isinstance(max_speed, bool) or not isinstance(max_speed, (int, float)):
-        return ValidationResult(False, 'CC-2: move_to.max_speed must be number')
-    if not 0.0 <= float(max_speed) <= MOVE_TO_MAX_SPEED_HI:
+    좌표(``position``)는 게이트 스키마 밖 — 좌표 산출은 게이트 하류의
+    의도-제어 변환 모듈(sigma_bridge) 결정론 lookup 담당이라 게이트 통과
+    시점엔 좌표가 존재하지 않는다. 좌표 환각·주입은 스키마에서 표현 자체가
+    안 되는 구조로 차단. ``target_class`` 등 그 외 키는 parser 부산물로
+    검증 없이 무시(다운스트림도 무시 — ask_user options 아티팩트 재발 방지).
+    속도 한계는 티어 1(변화율 제한·CBF-QP)·티어 0(PX4 클램프) 담당,
+    해소 좌표의 지오펜스는 운용 가드·티어 0 담당(ADR-0049 D3).
+    """
+    if 'position' in theta:
         return ValidationResult(
             False,
-            f'CC-2: move_to.max_speed {max_speed} ∉ [0, {MOVE_TO_MAX_SPEED_HI}]',
+            'CC-2: move_to.position is outside the semantic contract '
+            '(coordinates are resolved downstream; ADR-0049 D1)',
+        )
+    target = theta.get('target_id')
+    direction = theta.get('direction')
+    if (target is None) == (direction is None):
+        return ValidationResult(
+            False,
+            'CC-2: move_to requires exactly one of target_id | direction '
+            f'(got keys {sorted(theta)})',
+        )
+    if target is not None:
+        if not isinstance(target, str) or target not in known_objects:
+            return ValidationResult(
+                False, f'CC-2: move_to.target_id "{target}" ∉ known_objects'
+            )
+        return ValidationResult(True)
+    if not isinstance(direction, str) or direction not in MOVE_TO_DIRECTIONS:
+        return ValidationResult(
+            False,
+            f'CC-2: move_to.direction "{direction}" ∉ '
+            f'{sorted(MOVE_TO_DIRECTIONS)}',
         )
     return ValidationResult(True)
 
@@ -146,10 +169,19 @@ def _validate_empty(theta: Mapping[str, Any], *, sigma: str) -> ValidationResult
 
 
 def _validate_ask_user(theta: Mapping[str, Any]) -> ValidationResult:
+    """ADR-0013 Amendment 2026-07-13 — question 단독 계약.
+
+    ``options`` 는 어떤 *의도해석기*·parser 도 채우지 않고(question 전용
+    프롬프트·fallback) 어떤 다운스트림도 소비하지 않는다(사용자 응답은
+    ``/intent/user_response`` std_msgs/Bool 이진). 부재를 CC-2 reject 사유로
+    삼던 종전 검증은 프롬프트/parser 계약과 어긋나는 사문화된 요구 —
+    question-only 로 완화. 키가 존재하면 형식은 여전히 검증(list[str]).
+    """
     question = theta.get('question')
     if not isinstance(question, str) or not question.strip():
         return ValidationResult(False, 'CC-2: ask_user.question must be non-empty str')
-    options = theta.get('options')
-    if not isinstance(options, list) or any(not isinstance(o, str) for o in options):
-        return ValidationResult(False, 'CC-2: ask_user.options must be list[str]')
+    if 'options' in theta:
+        options = theta.get('options')
+        if not isinstance(options, list) or any(not isinstance(o, str) for o in options):
+            return ValidationResult(False, 'CC-2: ask_user.options must be list[str]')
     return ValidationResult(True)

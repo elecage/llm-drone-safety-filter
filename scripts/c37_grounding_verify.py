@@ -9,7 +9,7 @@ context_graph(객체+좌표)를 주입했을 때 LLM이 ADR-0027 스키마
 
 Mac mini Ollama 는 127.0.0.1 바인딩이므로 LAN 직접 접근 불가 → SSH 터널:
 
-    ssh -f -N -L 11500:localhost:11434 aiot@192.168.0.51
+    ssh -f -N -L 11500:localhost:11434 <user>@<sim-host>
     OLLAMA_BASE_URL=http://localhost:11500 \\
       PYTHONPATH=intent/llm:intent/context:sim/scenario_params \\
       python3 scripts/c37_grounding_verify.py --backbone gemma-4-e4b --scenario S5

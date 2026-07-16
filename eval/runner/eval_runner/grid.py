@@ -75,6 +75,7 @@ def build_trial_spec(
     mode: BaselineMode,
     fault_scenario: FaultScenario,
     episode_id: int,
+    confidence_source: str = 'live',
 ) -> TrialSpec:
     """단일 cell → TrialSpec — generate_trial_grid 의 cell 구성과 *동일* 로직.
 
@@ -89,13 +90,17 @@ def build_trial_spec(
         mode: BaselineMode — BASELINE_HELPERS key.
         fault_scenario: load_fault_scenario 결과.
         episode_id: 0 이상.
+        confidence_source: 'live'(기본) 또는 'synthetic:<profile>' (ADR-0050 D7 안 B —
+            합성 신뢰도 격리). seed 에는 미포함 — 프로파일 간 *동일 fault 실현*을
+            유지(신뢰도만 변주)하고, trial_id 접미로 충돌만 방지.
 
     Returns:
         TrialSpec — generate_trial_grid 가 같은 5차원에 대해 만드는 것과 동일.
 
     Raises:
         KeyError: mode 측 BASELINE_HELPERS 외 (정상 BaselineMode 측 unreachable).
-        ValueError/TypeError: TrialSpec __post_init__ 검증 (scenario_id·episode_id·seed).
+        ValueError/TypeError: TrialSpec __post_init__ 검증 (scenario_id·episode_id·seed·
+            confidence_source).
     """
     seed = derive_trial_seed(
         scenario_id=scenario_id,
@@ -110,6 +115,7 @@ def build_trial_spec(
         fault_scenario=fault_scenario,
         episode_id=episode_id,
         seed=seed,
+        confidence_source=confidence_source,
     )
 
 

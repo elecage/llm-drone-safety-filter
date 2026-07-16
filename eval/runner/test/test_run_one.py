@@ -151,7 +151,65 @@ class TestPlanToJsonRoundTrip:
         jt = obj['trials'][0]
         assert set(jt.keys()) == {
             'trial_id', 'status', 'scenario', 'baseline', 'fault',
-            'episode', 'bag_dir',
+            'episode', 'confidence_source', 'bag_dir',
         }
         assert jt['scenario'] == 'S6'
         assert jt['baseline'] == 'b1a'
+        assert jt['confidence_source'] == 'live'
+
+
+class TestConfidenceProfileExpansion:
+    """ADR-0050 D7 — --confidence-profiles 격자 확장 + 좌표 왕복."""
+
+    def _config(self, profiles, faults):
+        return RunConfig(
+            scenarios=['S5'],
+            baselines=['b2'],
+            faults=faults,
+            n_episodes=2,
+            output_root=Path('results/track_b'),
+            confidence_profiles=profiles,
+        )
+
+    def test_empty_profiles_keeps_live_grid(self, fault_names: list[str]) -> None:
+        """미지정(빈값) → 확장 없음, 전 cell confidence_source='live' (기존 격자 불변)."""
+        plan = plan_run(self._config((), fault_names[:1]))
+        assert all(it.trial.confidence_source == 'live' for it in plan)
+        # live trial_id 는 __c- 접미 없음.
+        assert all('__c-' not in it.trial_id for it in plan)
+
+    def test_profiles_expand_grid(self, fault_names: list[str]) -> None:
+        """프로파일 3종 → cell 수 ×3, 각 synthetic:<profile>, seed 는 프로파일 불변."""
+        profiles = ('c_constant_1', 'c_constant_mid', 'c_stall')
+        base = plan_run(self._config((), fault_names[:1]))
+        expanded = plan_run(self._config(profiles, fault_names[:1]))
+        assert len(expanded) == len(base) * len(profiles)
+        srcs = {it.trial.confidence_source for it in expanded}
+        assert srcs == {f'synthetic:{p}' for p in profiles}
+        # 같은 (scenario·baseline·fault·episode) cell 은 프로파일 무관 동일 seed.
+        by_coords: dict = {}
+        for it in expanded:
+            t = it.trial
+            key = (t.scenario_id, t.baseline_config.mode.value,
+                   t.fault_scenario.name, t.episode_id)
+            by_coords.setdefault(key, set()).add(t.seed)
+        assert all(len(seeds) == 1 for seeds in by_coords.values())
+
+    def test_plan_json_roundtrip_with_profile(self, fault_names: list[str]) -> None:
+        """plan JSON 의 confidence_source 좌표 → build_trial_from_coords → 동일 trial."""
+        profiles = ('c_constant_1', 'c_stall')
+        obj = plan_to_json_obj(plan_run(self._config(profiles, fault_names[:1])))
+        assert len(obj['trials']) == 2 * len(profiles)
+        for jt in obj['trials']:
+            assert jt['confidence_source'].startswith('synthetic:')
+            assert jt['trial_id'].endswith(
+                '__c-' + jt['confidence_source'][len('synthetic:'):]
+            )
+            rebuilt = build_trial_from_coords(
+                scenario=jt['scenario'],
+                baseline=jt['baseline'],
+                fault=jt['fault'],
+                episode=jt['episode'],
+                confidence_source=jt['confidence_source'],
+            )
+            assert rebuilt.trial_id == jt['trial_id']

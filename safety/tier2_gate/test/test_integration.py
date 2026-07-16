@@ -76,7 +76,7 @@ def test_e2e_inspect_then_move_during_progress_forces_confirm(geofence, known):
     assert s.activity == Activity.INSPECT
 
     # inspect 진행 중 move_to → C3 contradicts → confirm
-    r = _run(s, 'move_to', {'position': (2.0, 0.0, 1.0), 'max_speed': 0.3}, 0.9,
+    r = _run(s, 'move_to', {'target_id': 'sofa'}, 0.9,
              geofence=geofence, known=known)
     assert r.decision == Decision.CONFIRM
     assert 'Φ_10' in r.violations
@@ -101,7 +101,7 @@ def test_e2e_confirm_timeout_blocks_next_command(geofence, known, monkeypatch):
     gs = s.to_gate_state()
     assert gs.confirm_pending_elapsed_s == pytest.approx(DEFAULT.T_resp + 1.0)
     # 다음 명령 — Φ_9 violation → reject.
-    r = _run(s, 'move_to', {'position': (1.0, 0.0, 1.0), 'max_speed': 0.3}, 0.9,
+    r = _run(s, 'move_to', {'target_id': 'sofa'}, 0.9,
              geofence=geofence, known=known)
     assert r.decision == Decision.REJECT
     assert 'Φ_9' in r.violations
@@ -116,14 +116,14 @@ def test_e2e_n_sc_accumulates_then_resets_at_accept(geofence, known):
     s.on_self_correction()
     s.on_self_correction()
     s.on_self_correction()
-    r1 = _run(s, 'move_to', {'position': (1.0, 0.0, 1.0), 'max_speed': 0.3}, 0.9,
+    r1 = _run(s, 'move_to', {'target_id': 'sofa'}, 0.9,
               geofence=geofence, known=known)
     assert r1.decision == Decision.REJECT
     assert 'Φ_8' in r1.violations
 
     # n_sc 를 줄여서 (이후 ACCEPT 후 M3 reset 검증을 위해) 일단 한 번 ACCEPT.
     s.n_sc = 0
-    r2 = _run(s, 'move_to', {'position': (1.0, 0.0, 1.0), 'max_speed': 0.3}, 0.9,
+    r2 = _run(s, 'move_to', {'target_id': 'sofa'}, 0.9,
               geofence=geofence, known=known)
     assert r2.decision == Decision.ACCEPT
     assert s.n_sc == 0  # ACCEPT 직후 M3 reset

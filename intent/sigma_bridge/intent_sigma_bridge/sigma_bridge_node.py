@@ -63,6 +63,7 @@ from std_msgs.msg import Bool, String
 from intent_sigma_bridge.sigma_bridge_helpers import (
     apply_vertical_floor,
     candidate_cluster_center,
+    clamp_to_geofence_local,
     compute_detour_waypoint,
     compute_radial_escape,
     compute_vantage_pose,
@@ -193,6 +194,15 @@ class SigmaBridgeNode(Node):
             'vantage_sweep_tol_rad', _DEFAULT_VANTAGE_SWEEP_TOL,
         )
         self.declare_parameter('grounding_gate_topic', '/intent/grounding_gate')
+        # ADR-0049 D3 — 운용 지오펜스 AABB (world 좌표). 게이트의 종전 move_to
+        # 좌표 지오펜스 검사(CC-2)를 대체하는 운용 가드 클램프. 기본값 = 거실
+        # (tier2 sim_integration.launch.py 와 동기). zmax<=zmin 이면 비활성.
+        self.declare_parameter('geofence_xmin', -3.0)
+        self.declare_parameter('geofence_xmax', 3.0)
+        self.declare_parameter('geofence_ymin', -2.0)
+        self.declare_parameter('geofence_ymax', 2.0)
+        self.declare_parameter('geofence_zmin', 0.0)
+        self.declare_parameter('geofence_zmax', 2.4)
 
         out_pose = str(self.get_parameter('output_waypoint_topic').value)
         sigma_topic = str(self.get_parameter('sigma_topic').value)
@@ -204,6 +214,10 @@ class SigmaBridgeNode(Node):
         self._user_guard_r = float(self.get_parameter('user_guard_radius_m').value)
         self._detour_threshold = float(
             self.get_parameter('detour_arrival_threshold_m').value
+        )
+        self._geofence_bounds = tuple(
+            float(self.get_parameter(f'geofence_{k}').value)
+            for k in ('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax')
         )
         self._vantage_standoff = float(
             self.get_parameter('vantage_standoff_m').value
@@ -783,6 +797,9 @@ class SigmaBridgeNode(Node):
         분기:
           (0) z floor 강제 — setpoint z < takeoff_altitude_m 이면 takeoff_alt
               로 올림. emergency_land 는 본 함수 우회.
+          (0b) 지오펜스 클램프 (ADR-0049 D3) — setpoint 를 운용 지오펜스
+              AABB 안으로 성분별 클램프. 의미 인자 계약(D1)에서 게이트가
+              좌표를 못 보므로 해소 좌표의 지오펜스는 여기 + 티어 0 담당.
           (1) setpoint 자체가 r_guard 안 → *drone↔user 직선의 drone 쪽 r_guard
               외곽점* 으로 projection.
           (2a) drone→setpoint 직선 segment 가 r_guard 와 교차 + 우회 가능 →
@@ -825,6 +842,22 @@ class SigmaBridgeNode(Node):
                 f'(< takeoff_alt={self._takeoff_alt:.2f})'
             )
             z = z_floored
+
+        # 분기 (0b): 지오펜스 클램프 — ADR-0049 D3. 게이트가 좌표를 못 보는
+        # 의미 인자 계약(D1)에서 해소 좌표의 지오펜스 책임은 운용 가드 소관.
+        # zmax<=zmin (퇴화 AABB) 이면 비활성.
+        if self._geofence_bounds[5] > self._geofence_bounds[4]:
+            gx, gy, gz = clamp_to_geofence_local(
+                x, y, z,
+                bounds_world=self._geofence_bounds,
+                spawn=(self._spawn_x, self._spawn_y, self._spawn_z),
+            )
+            if (gx, gy, gz) != (x, y, z):
+                self.get_logger().info(
+                    f'[guard] (0b) geofence clamp: '
+                    f'({x:.2f},{y:.2f},{z:.2f}) → ({gx:.2f},{gy:.2f},{gz:.2f})'
+                )
+                x, y, z = gx, gy, gz
 
         # 분기 (1): setpoint 자체 r_guard 침범
         dux = x - self._user_local_x

@@ -52,6 +52,10 @@ def check_phi_1(
     move_to 292 건 전부 CC-2 로 거부, Φ_1 경로 미도달). Φ_2 (CC-1 동치) 도 동일
     구조. 제거 검토는 ROADMAP C42 (구 C39). 본 함수는 정형 (cmsm-proof §9.3) 과의
     1:1 대응 보존을 위해 유지.
+
+    ADR-0049 이후 이중 사문화 — D1 이 position 을 스키마에서 범주 거부하므로
+    본 검사의 position 분기는 게이트 흐름에서 원리적으로 도달 불가. 해소
+    좌표의 지오펜스는 운용 가드(sigma_bridge)·티어 0 담당 (ADR-0049 D3).
     """
     if sigma != 'move_to':
         return False

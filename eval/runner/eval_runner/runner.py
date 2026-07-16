@@ -36,7 +36,7 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import List, Optional, Sequence
 
@@ -101,6 +101,12 @@ class RunConfig:
         intent_llm wrapper 측 registry 식별자 (run-level — 격자 차원 아님).
         backbone ablation 은 backbone 별 run 반복 (ADR-0014 D5 / ADR-0025 D3
         5-dim 격자 정합). 출력은 ``<output_root>/<backbone>/<trial_id>/``.
+    confidence_profiles : Sequence[str]
+        합성 신뢰도 프로파일 name list (ADR-0050 D7 안 B — 격리 격자). 빈 값(기본)
+        이면 각 cell 은 confidence_source='live'(배포 경로) — 기존 격자 불변. 지정 시
+        기본 격자를 프로파일별로 확장해 각 cell → confidence_source='synthetic:<profile>'
+        (예: 'c_constant_1' 'c_constant_mid' 'c_stall'). seed 불변(프로파일은 seed
+        차원 아님) → 프로파일 간 동일 fault 실현, 신뢰도만 변주.
     """
 
     scenarios: Sequence[str]
@@ -113,6 +119,7 @@ class RunConfig:
     limit: Optional[int] = None
     episode_timeout_s: float = DEFAULT_EPISODE_TIMEOUT_S
     backbone: str = DEFAULT_BACKBONE
+    confidence_profiles: Sequence[str] = ()
 
 
 @dataclass(frozen=True)
@@ -144,17 +151,29 @@ def _default_fault_names() -> List[str]:
 
 
 def select_trials(config: RunConfig) -> List[TrialSpec]:
-    """RunConfig → list[TrialSpec] (격자 생성 + limit).
+    """RunConfig → list[TrialSpec] (격자 생성 + 신뢰도 프로파일 확장 + limit).
+
+    confidence_profiles 지정 시(ADR-0050 D7) 기본 격자의 각 cell 을 프로파일별로
+    확장한다 — cell 마다 confidence_source='synthetic:<profile>' 인 TrialSpec 을
+    프로파일 인접 순서로 방출(seed 불변, dataclasses.replace 가 __post_init__ 재검증).
+    빈 값(기본)이면 확장 없이 live cell 만(기존 격자 불변).
 
     Raises:
         ValueError: scenario/baseline/fault 무효 또는 n_episodes ≤ 0
-            (generate_trial_grid 측 propagate). limit < 0.
+            (generate_trial_grid 측 propagate). limit < 0. confidence_source 무효
+            (TrialSpec __post_init__ — 빈 프로파일명 등).
     """
     modes = [BaselineMode(b) for b in config.baselines]  # 무효 측 ValueError
     fault_paths = resolve_fault_scenario_paths(config.faults)
     grid = generate_trial_grid(
         config.scenarios, modes, fault_paths, config.n_episodes,
     )
+    if config.confidence_profiles:
+        grid = [
+            replace(trial, confidence_source=f'synthetic:{profile}')
+            for trial in grid
+            for profile in config.confidence_profiles
+        ]
     if config.limit is not None:
         if config.limit < 0:
             raise ValueError(f'limit={config.limit} 무효 — 0 이상 필수')
@@ -290,8 +309,13 @@ def plan_to_json_obj(plan: Sequence[TrialPlanItem]) -> dict:
     baseline·fault name·episode) + resume 판정 status 를 담는다. bag_dir 은 host 가
     리셋·로그 진단에 참조(문자열).
 
+    confidence_source 좌표도 포함(ADR-0050 D7) — run_grid.py 가 이를 eval-runner-one
+    `--confidence-source` 로 전달해 컨테이너가 동일 TrialSpec 을 재구성한다. 'live'
+    (기본)면 그대로 'live'.
+
     Returns:
-        {'trials': [{trial_id, status, scenario, baseline, fault, episode, bag_dir}, ...]}
+        {'trials': [{trial_id, status, scenario, baseline, fault, episode,
+                     confidence_source, bag_dir}, ...]}
     """
     trials = []
     for it in plan:
@@ -303,6 +327,7 @@ def plan_to_json_obj(plan: Sequence[TrialPlanItem]) -> dict:
             'baseline': trial.baseline_config.mode.value,
             'fault': trial.fault_scenario.name,
             'episode': trial.episode_id,
+            'confidence_source': trial.confidence_source,
             'bag_dir': str(it.bag_dir),
         })
     return {'trials': trials}
@@ -438,6 +463,8 @@ def _build_config(args: argparse.Namespace) -> RunConfig:
         limit=args.limit,
         episode_timeout_s=args.episode_timeout_s,
         backbone=args.backbone,
+        # grid-json(패널 export)은 confidence 축 미포함 → live 유지.
+        confidence_profiles=tuple(args.confidence_profiles or ()),
     )
 
 
@@ -464,6 +491,11 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
                     default=DEFAULT_EPISODE_TIMEOUT_S, dest='episode_timeout_s')
     ap.add_argument('--backbone', default=DEFAULT_BACKBONE,
                     help=f'intent_llm registry 식별자 (run-level, default {DEFAULT_BACKBONE})')
+    ap.add_argument('--confidence-profiles', nargs='+', default=None,
+                    dest='confidence_profiles',
+                    help='합성 신뢰도 프로파일 name (ADR-0050 D7 격리 격자) — 지정 시 '
+                         '격자를 프로파일별로 확장(각 cell → synthetic:<profile>). '
+                         "미지정=live(현행). 예: c_constant_1 c_constant_mid c_stall.")
     ap.add_argument('--scan-bags', action='store_true', dest='scan_bags',
                     help='실행 없이 <output-root>/<backbone> 측 bag_status 집계만 '
                          '보고 (메트릭 집계 진입 전 게이트). incomplete 존재 시 '

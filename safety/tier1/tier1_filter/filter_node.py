@@ -123,6 +123,13 @@ class Tier1FilterNode(Node):
         # ADR-0020 D9: 변화율 제한은 추정기 단일 → 티어 1은 이 값을 *가용성 검증*
         # (T2-4)에만 쓰고 신뢰도 재-clamp 에는 쓰지 않는다.
         self.declare_parameter('dot_c_max', 0.833)
+        # ADR-0050 D2 실험 — 제동 버퍼 (기본 0.0 = off, 기존 거동 불변). CBF가 집행하는
+        # 반경을 r + brake_buffer_m 로 키워, 단일적분기 CBF($\\dot p=u$, rel.deg 1)와 PX4
+        # 속도추적 1차 지연($\\tau=1/\\gamma$) 사이 상대차수 간극이 만드는 경계 overshoot
+        # ($\\approx v_\\text{approach}\\cdot\\tau$)를 흡수한다. 물리 하한 $r_\\text{min}$은
+        # 불변 — *집행* 경계만 바깥으로 밀어 물리 하한 침범을 막는다(안전 강화, 공간 축소).
+        # 솔버(cbf_qp)는 불변 — filter_node 가 r+buffer 를 넘길 뿐.
+        self.declare_parameter('brake_buffer_m', 0.0)
         # user 위치 (local ENU). default = 거실 layout v3 user_marker world 좌표
         # (-2.6, 1.5, 1.1)을 EKF origin (spawn world 0.5, -0.5, 0.15) 기준 local로
         # 변환한 값 (-3.1, 2.0, 0.95). G2 c2 시나리오 USER_POS와 정합.
@@ -153,6 +160,7 @@ class Tier1FilterNode(Node):
         self.gamma = float(self.get_parameter('gamma').value)
         self.u_max = float(self.get_parameter('u_max').value)
         self.dot_c_max = float(self.get_parameter('dot_c_max').value)
+        self.brake_buffer = float(self.get_parameter('brake_buffer_m').value)
         self.user_pos = np.array([
             float(self.get_parameter('user_local_x').value),
             float(self.get_parameter('user_local_y').value),
@@ -347,13 +355,13 @@ class Tier1FilterNode(Node):
         if self.mode in (FilterMode.B1, FilterMode.B1_MAX):
             u_safe, info = cbf_qp_velocity_static(
                 u_nom, self._last_drone_pos_enu, self.user_pos,
-                self._static_radius, self.gamma, self.u_max,
+                self._static_radius + self.brake_buffer, self.gamma, self.u_max,
             )
         else:  # B2
             r, r_dot = self._r_and_r_dot()
             u_safe, info = cbf_qp_velocity_modulated(
                 u_nom, self._last_drone_pos_enu, self.user_pos,
-                r, r_dot, self.gamma, self.u_max,
+                r + self.brake_buffer, r_dot, self.gamma, self.u_max,
             )
 
         msg_safe = TwistStamped()
@@ -391,11 +399,12 @@ class Tier1FilterNode(Node):
 
         if self.mode in (FilterMode.B1, FilterMode.B1_MAX):
             p_safe, info = project_pose_to_safe_static(
-                p_target, self.user_pos, self._static_radius
+                p_target, self.user_pos, self._static_radius + self.brake_buffer
             )
         else:  # B2 — 현재 $r(\\tilde c)$로 projection.
             r, _ = self._r_and_r_dot()
-            p_safe, info = project_pose_to_safe_modulated(p_target, self.user_pos, r)
+            p_safe, info = project_pose_to_safe_modulated(
+                p_target, self.user_pos, r + self.brake_buffer)
 
         msg_safe = PoseStamped()
         msg_safe.header = msg.header

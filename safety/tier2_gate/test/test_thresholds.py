@@ -22,7 +22,8 @@ def test_default_operational_thresholds_match_adr_0013_d5():
 
 
 def test_default_contradicts_thresholds_match_adr_0019_d4():
-    assert DEFAULT.D_cancel == 0.5
+    # (D_cancel 제거 — ADR-0049 D6: C1 의미 인자 판 전환으로 거리 임계 불요.)
+    assert not hasattr(DEFAULT, 'D_cancel')
     assert DEFAULT.eps_vp == 0.1
     assert DEFAULT.tau_settle == 1.0
     assert DEFAULT.eps_dock == 0.2
@@ -55,9 +56,10 @@ def test_T_resp_must_be_positive():
         Thresholds(T_resp=0.0)
 
 
-def test_D_cancel_must_be_positive():
-    with pytest.raises(AssertionError):
-        Thresholds(D_cancel=0.0)
+def test_D_cancel_field_removed():
+    """ADR-0049 D6 — C1 이 의미 인자 판이 되어 D_cancel 필드 자체가 제거됨."""
+    with pytest.raises(TypeError):
+        Thresholds(D_cancel=0.5)
 
 
 def test_paper_C_sweep_grid_is_constructible():

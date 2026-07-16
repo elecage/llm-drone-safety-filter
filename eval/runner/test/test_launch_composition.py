@@ -24,6 +24,7 @@ from eval_faults.fault_scenario import (
 )
 
 from eval_runner.launch_composition import (
+    NODE_NAME_CONF_PUBLISHER,
     NODE_NAME_CONTEXT_GRAPH,
     NODE_NAME_ESTIMATOR,
     NODE_NAME_INJECTOR,
@@ -32,6 +33,7 @@ from eval_runner.launch_composition import (
     NODE_NAME_TIER1,
     NODE_NAME_TIER2_GATE,
     NODE_NAME_UTTERANCE,
+    SYNTHETIC_C_TOPIC,
     VALID_NODE_KINDS,
     NodeSpec,
     compose_trial_node_specs,
@@ -69,13 +71,15 @@ def _make_fault(channel: FaultChannel, variant: str = 'dummy_variant') -> FaultS
 
 def _make_trial(config: BaselineConfig, seed: int = 12345,
                 scenario_id: str = 'S5',
-                fault: FaultScenario | None = None) -> TrialSpec:
+                fault: FaultScenario | None = None,
+                confidence_source: str = 'live') -> TrialSpec:
     return TrialSpec(
         scenario_id=scenario_id,
         baseline_config=config,
         fault_scenario=fault if fault is not None else _make_none_fault(),
         episode_id=0,
         seed=seed,
+        confidence_source=confidence_source,
     )
 
 
@@ -275,6 +279,33 @@ class TestParameterWiring:
             specs = compose_trial_node_specs(_make_trial(cfg_fn()))
             tier1 = next(s for s in specs if s.name == NODE_NAME_TIER1)
             assert tier1.parameters['mode'] == expected
+
+    def test_brake_buffer_off_by_default(self) -> None:
+        """TIER1_BRAKE_BUFFER_M 미설정 시 tier1 에 brake_buffer_m 파라미터 없음 (기존 거동)."""
+        import os
+        old = os.environ.pop('TIER1_BRAKE_BUFFER_M', None)
+        try:
+            specs = compose_trial_node_specs(_make_trial(b2_config()))
+            tier1 = next(s for s in specs if s.name == NODE_NAME_TIER1)
+            assert 'brake_buffer_m' not in tier1.parameters
+        finally:
+            if old is not None:
+                os.environ['TIER1_BRAKE_BUFFER_M'] = old
+
+    def test_brake_buffer_from_env(self) -> None:
+        """TIER1_BRAKE_BUFFER_M 설정 시 tier1 brake_buffer_m 파라미터로 전파 (ADR-0050 D2)."""
+        import os
+        old = os.environ.get('TIER1_BRAKE_BUFFER_M')
+        os.environ['TIER1_BRAKE_BUFFER_M'] = '0.15'
+        try:
+            specs = compose_trial_node_specs(_make_trial(b2_config()))
+            tier1 = next(s for s in specs if s.name == NODE_NAME_TIER1)
+            assert tier1.parameters['brake_buffer_m'] == 0.15
+        finally:
+            if old is None:
+                os.environ.pop('TIER1_BRAKE_BUFFER_M', None)
+            else:
+                os.environ['TIER1_BRAKE_BUFFER_M'] = old
 
     def test_intent_llm_mode_direct_when_no_context(self) -> None:
         """context_aug=False 측 intent_llm wrapper mode='direct'."""
@@ -674,3 +705,63 @@ class TestTier2GateConfidenceWiring:
             specs = compose_trial_node_specs(_make_trial(cfg))
             est = _spec_by_name(specs, NODE_NAME_ESTIMATOR)
             assert 'sigma_raw_topic' not in est.parameters
+
+
+# -------------------------------------------- synthetic confidence (ADR-0050 D7)
+
+
+class TestSyntheticConfidence:
+    """confidence_source='synthetic:<profile>' → publisher_node 추가 +
+    estimator external 모드 (ADR-0050 D7 안 B)."""
+
+    def test_live_default_no_publisher(self) -> None:
+        """기본 live — publisher_node 없음, estimator live 모드."""
+        specs = compose_trial_node_specs(_make_trial(b2_config()))
+        names = [s.name for s in specs]
+        assert NODE_NAME_CONF_PUBLISHER not in names
+        est = next(s for s in specs if s.name == NODE_NAME_ESTIMATOR)
+        assert est.parameters['estimator_mode'] == 'live'
+
+    def test_synthetic_adds_publisher(self) -> None:
+        """synthetic:c_constant_1 — publisher_node 추가."""
+        specs = compose_trial_node_specs(
+            _make_trial(b2_config(), confidence_source='synthetic:c_constant_1')
+        )
+        pub = next((s for s in specs if s.name == NODE_NAME_CONF_PUBLISHER), None)
+        assert pub is not None, 'publisher_node 미추가'
+        assert pub.package == 'intent_confidence'
+        assert pub.executable == 'publisher_node'
+        assert pub.parameters['scenario_file'] == 'c_constant_1.yaml'
+        assert pub.parameters['output_topic'] == SYNTHETIC_C_TOPIC
+
+    def test_synthetic_estimator_external(self) -> None:
+        """synthetic — estimator external 모드 + external_c_topic 배선."""
+        specs = compose_trial_node_specs(
+            _make_trial(b2_config(), confidence_source='synthetic:c_stall')
+        )
+        est = next(s for s in specs if s.name == NODE_NAME_ESTIMATOR)
+        assert est.parameters['estimator_mode'] == 'external'
+        assert est.parameters['external_c_topic'] == SYNTHETIC_C_TOPIC
+        # live 전용 remap 미적용
+        assert 'ovd_detection_topic' not in est.parameters
+
+    def test_synthetic_trial_id_suffix(self) -> None:
+        """trial_id 에 __c-<profile> 접미, live 는 접미 없음."""
+        live = _make_trial(b2_config())
+        synth = _make_trial(b2_config(), confidence_source='synthetic:c_constant_mid')
+        assert '__c-' not in live.trial_id
+        assert synth.trial_id.endswith('__c-c_constant_mid')
+        # base(접미 제외) 는 동일
+        assert synth.trial_id.rsplit('__c-', 1)[0] == live.trial_id
+
+    def test_synthetic_isolation_baselines(self) -> None:
+        """B0/B1a/B1b/B2 전부 synthetic 분기에서 estimator external·publisher 동반."""
+        for cfg in (b0_config(), b1a_config(), b1b_config(), b2_config()):
+            trial = _make_trial(cfg, confidence_source='synthetic:c_constant_1')
+            specs = compose_trial_node_specs(trial)
+            names = [s.name for s in specs]
+            assert NODE_NAME_CONF_PUBLISHER in names
+            est = next(s for s in specs if s.name == NODE_NAME_ESTIMATOR)
+            assert est.parameters['estimator_mode'] == 'external'
+            # publisher +1 → base 6 → 7, count helper 정합
+            assert len(specs) == expected_node_count(trial) == 7

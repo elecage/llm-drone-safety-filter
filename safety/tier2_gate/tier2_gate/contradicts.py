@@ -11,8 +11,14 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Mapping
 
-from tier2_gate._geom import l2
 from tier2_gate.thresholds import Thresholds
+
+_OPPOSITE_DIRECTION: Mapping[str, str] = {
+    'forward': 'back', 'back': 'forward',
+    'left': 'right', 'right': 'left',
+    'up': 'down', 'down': 'up',
+}
+"""ADR-0049 D6 — C1 의미 인자 판의 방향 반전 쌍 (catalog.MOVE_TO_DIRECTIONS 동기)."""
 
 
 class Activity(str, Enum):
@@ -47,11 +53,23 @@ def contradicts(
         return False
     assert theta_prev is not None, 'sigma_prev set but theta_prev missing'
 
-    # (C1) 위치 변경 모순.
+    # (C1) 이동 목적지 변경 모순 — ADR-0049 D6 의미 인자 판.
+    # 종전 position 거리(D_cancel) 판정은 ADR-0049 D1(게이트 좌표 거부)로
+    # 도달 불가 → 목적지 반전의 의미 판정으로 대체: 명명 대상 변경 또는
+    # 방향 반전(forward↔back 등). 혼합 형태(target↔direction)는 비교 기하가
+    # 없어 모순으로 보지 않음(정제 명령으로 간주).
     if sigma_prev == 'move_to' and sigma_new == 'move_to':
-        a = theta_prev.get('position')
-        b = theta_new.get('position')
-        if a is not None and b is not None and l2(a, b) > thresholds.D_cancel:
+        t_prev = theta_prev.get('target_id')
+        t_new = theta_new.get('target_id')
+        if t_prev is not None and t_new is not None and t_prev != t_new:
+            return True
+        d_prev = theta_prev.get('direction')
+        d_new = theta_new.get('direction')
+        if (
+            d_prev is not None
+            and d_new is not None
+            and _OPPOSITE_DIRECTION.get(str(d_prev)) == d_new
+        ):
             return True
 
     # (C2) 이동 → 복귀.

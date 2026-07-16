@@ -23,7 +23,8 @@ class Thresholds:
     T_resp: float = 30.0   # confirm 응답 timeout [s], Φ_9.
 
     # ADR-0019 D4 — contradicts 술어 임계.
-    D_cancel: float = 0.5     # 위치 변경 모순 임계 [m], C1.
+    # (D_cancel 제거 — ADR-0049 D6: C1이 의미 인자 판(target 변경·방향 반전)으로
+    #  전환돼 위치 거리 임계 불요.)
     eps_vp: float = 0.1       # inspect viewpoint 도달 허용 [m], C3·C4·C5.
     tau_settle: float = 1.0   # inspect-in-progress 종료 안정 시간 [s].
     eps_dock: float = 0.2     # return_to_dock 도달 허용 [m], C6·C7.
@@ -36,7 +37,6 @@ class Thresholds:
         assert self.N_sc >= 1, f'N_sc={self.N_sc} ≥ 1 강제 (ADR-0013 D5)'
         assert self.T_resp > 0, f'T_resp={self.T_resp} > 0'
         assert self.T_link > 0, f'T_link={self.T_link} > 0'
-        assert self.D_cancel > 0, f'D_cancel={self.D_cancel} > 0'
         assert self.eps_vp > 0, f'eps_vp={self.eps_vp} > 0'
         assert self.eps_dock > 0, f'eps_dock={self.eps_dock} > 0'
         assert self.tau_settle > 0, f'tau_settle={self.tau_settle} > 0'

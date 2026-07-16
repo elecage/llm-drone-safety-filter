@@ -19,6 +19,12 @@
 #   EPISODES=2 BACKBONES="gemma-4-e4b llama-3.2-11b-vision" \
 #     RUN_TAG=smoke ./scripts/run_full_experiment.sh             # 적은-ep 검증(동일 경로)
 #   DRY_RUN=1 ./scripts/run_full_experiment.sh                    # 계획만
+#   SCENARIOS="S5 S6" LEGS=full_stack BASELINES=b4 FAULTS=adversarial_geofence \
+#     RUN_TAG=adr0049_b4adv ./scripts/run_full_experiment.sh      # 표적 재수집(ADR-0049 D5)
+#   BACKBONES=gemma-4-e4b CONFIDENCE_PROFILES="c_constant_1 c_constant_mid c_stall" \
+#     RUN_TAG=adr0050_isolation ./scripts/run_full_experiment.sh  # 합성 신뢰도 격리(ADR-0050 D7)
+#     # ↳ 하한 검증(Track B) 다리를 프로파일별로 확장. 신뢰도가 합성이라 백본 축 무의미
+#     #   → 단일 백본으로 실행(ADR-0050 D1 "단일 구성"). live 통합 스택 다리는 불변.
 #
 # 분석은 *항상 특정 run 디렉터리*를 가리킨다 (results/ 통째 읽기 금지):
 #   결과·집계 = results/runs/<RUN_ID>/  (실행 끝에 경로 출력).
@@ -31,7 +37,11 @@ cd "$(dirname "$0")/.."
 BACKBONES="${BACKBONES:-gemma-4-e4b llama-3.2-11b-vision gpt-4o}"
 EPISODES="${EPISODES:-10}"
 SCENARIOS="${SCENARIOS:-S5 S6}"      # 부분 재수집(예: ADR-0039 D6 셀 무효화) 시 "S5"
+BASELINES="${BASELINES:-}"           # 부분 재수집 시 예: "b4" (빈값 = 컨테이너 전체 6종)
+FAULTS="${FAULTS:-}"                 # 부분 재수집 시 예: "adversarial_geofence" (빈값 = 전체 5종)
 LEGS="${LEGS:-both}"                 # both | full_stack (track_b 유효 시 재수집 생략)
+CONFIDENCE_PROFILES="${CONFIDENCE_PROFILES:-}"  # 빈값=live(현행). 지정 시 하한 검증(Track B)
+                                     # 다리를 합성 신뢰도 프로파일로 확장(ADR-0050 D7 격리).
 RUN_TAG="${RUN_TAG:-}"
 CONTAINER="${CONTAINER_NAME:-llmdrone-sim}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -76,8 +86,12 @@ preflight() {
 }
 
 _n_sc=$(echo $SCENARIOS | wc -w | tr -d ' ')
-std_per=$((_n_sc * 6 * 5 * EPISODES))    # 시나리오 × 6 baseline × 5 fault
-trk_per=$((_n_sc * 4 * 1 * EPISODES))    # S5,S6 × 4 baseline × 1 fault(사용자 직격)
+_n_b=6; [ -n "$BASELINES" ] && _n_b=$(echo $BASELINES | wc -w | tr -d ' ')
+_n_f=5; [ -n "$FAULTS" ] && _n_f=$(echo $FAULTS | wc -w | tr -d ' ')
+_n_cp=1; [ -n "$CONFIDENCE_PROFILES" ] && _n_cp=$(echo $CONFIDENCE_PROFILES | wc -w | tr -d ' ')
+std_per=$((_n_sc * _n_b * _n_f * EPISODES))  # 시나리오 × baseline × fault
+trk_per=$((_n_sc * 4 * 1 * EPISODES * _n_cp))  # S5,S6 × 4 baseline × 1 fault × 신뢰도 프로파일(격리)
+[ "$LEGS" != "both" ] && trk_per=0       # 표시 버그 수정 — 다리2 생략 시 합산 제외
 echo "=================================================================="
 echo " ADR-0039 Full Experiment — 단일 파이프라인 (양 다리 + 자동 집계)"
 echo "   run 디렉터리: $RUN_DIR"
@@ -108,7 +122,10 @@ params:
   backbones: [$(echo $BACKBONES | sed 's/ /, /g')]
   episodes: ${EPISODES}
   scenarios: [$(echo $SCENARIOS | sed 's/ /, /g')]
+  baselines: [$([ -n "$BASELINES" ] && echo $BASELINES | sed 's/ /, /g' || echo all)]
+  faults: [$([ -n "$FAULTS" ] && echo $FAULTS | sed 's/ /, /g' || echo all)]
   legs: [$([ "$LEGS" = both ] && echo "full_stack, lower_bound_track_b" || echo "full_stack")]
+  confidence_profiles: [$([ -n "$CONFIDENCE_PROFILES" ] && echo $CONFIDENCE_PROFILES | sed 's/ /, /g' || echo live)]
   ollama_base_url: ${OLLAMA_BASE_URL}
 EOF
 [ "$_git_dirty" = "true" ] && echo "[full-exp] ⚠️ git dirty — 미커밋 코드로 실행(manifest 기록). 재현성 주의."
@@ -119,12 +136,14 @@ fail=0
 for bb in $BACKBONES; do
   echo "===== [$(date +%H:%M)] $bb — 다리1 통합 스택 격자 (S5 S6, ${EPISODES}ep) → $RUN_DIR ====="
   .venv/bin/python3 scripts/run_grid.py $first_build --scenarios $SCENARIOS \
+    ${BASELINES:+--baselines $BASELINES} ${FAULTS:+--faults $FAULTS} \
     --backbone "$bb" --n-episodes "$EPISODES" --output-root "$RUN_DIR" \
     || { echo "[full-exp] WARN: $bb 통합 스택 비정상(incomplete 가능) — 계속"; fail=1; }
   first_build=''
   if [ "$LEGS" = "both" ]; then
     echo "===== [$(date +%H:%M)] $bb — 다리2 하한 검증 격자 (Track B, ${EPISODES}ep) → $RUN_DIR ====="
     .venv/bin/python3 scripts/run_grid.py --track-b \
+      ${CONFIDENCE_PROFILES:+--confidence-profiles $CONFIDENCE_PROFILES} \
       --backbone "$bb" --n-episodes "$EPISODES" --output-root "$RUN_DIR" \
       || { echo "[full-exp] WARN: $bb Track B 비정상 — 계속"; fail=1; }
   else

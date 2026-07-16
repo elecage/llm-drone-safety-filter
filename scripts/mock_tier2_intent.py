@@ -27,11 +27,11 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 
-# 모든 시나리오의 move_to position 을 동일 [1, 1, 1] 로 통일 — accept scenario
-# 후 confirm_phi10 #1 이 C1 (위치 변경 모순) 에 우발 걸리지 않도록 (σ_prev 가
-# 누적되는 사이 순서를 가정). confirm_phi10 #2 의 return_to_dock 이 C2 로
-# Φ_10 confirm 을 명시적으로 발동.
-_MOVE_TO_DEFAULT = {'position': [1.0, 1.0, 1.0], 'max_speed': 0.3}
+# 모든 시나리오의 move_to 를 동일 target_id 'sofa' 로 통일 (ADR-0049 D1 의미
+# 인자 계약; gate_node 기본 known_objects 에 포함) — accept scenario 후
+# confirm_phi10 #1 이 C1 (목적지 변경 모순) 에 우발 걸리지 않도록. confirm_phi10
+# #2 의 return_to_dock 이 C2 로 Φ_10 confirm 을 명시적으로 발동.
+_MOVE_TO_DEFAULT = {'target_id': 'sofa'}
 
 SCENARIOS = {
     'accept': [

@@ -42,6 +42,7 @@ def build_trial_from_coords(
     baseline: str,
     fault: str,
     episode: int,
+    confidence_source: str = 'live',
 ) -> TrialSpec:
     """trial 좌표 → TrialSpec (격자 enumeration 과 동일 — grid.build_trial_spec).
 
@@ -50,19 +51,24 @@ def build_trial_from_coords(
         baseline: BaselineMode value ('b0'..'b4').
         fault: fault scenario name (default 5종 — resolve_fault_scenario_paths).
         episode: episode_id (0 이상).
+        confidence_source: 'live'(기본) 또는 'synthetic:<profile>' (ADR-0050 D7 안 B —
+            합성 신뢰도 격리 격자). host plan(plan_to_json_obj)의 좌표를 그대로 재구성.
 
     Returns:
         TrialSpec — generate_trial_grid 가 같은 좌표에 대해 만드는 것과 동일(seed 포함).
 
     Raises:
         ValueError: baseline 무효 (BaselineMode), fault 무효 (resolve), scenario·
-            episode 무효 (TrialSpec __post_init__).
+            episode·confidence_source 무효 (TrialSpec __post_init__).
         FileNotFoundError: fault YAML 부재.
     """
     mode = BaselineMode(baseline)  # 무효 측 ValueError
     fault_path = resolve_fault_scenario_paths([fault])[0]  # 무효 측 ValueError
     fault_scenario = load_fault_scenario(fault_path)
-    return build_trial_spec(scenario, mode, fault_scenario, episode)
+    return build_trial_spec(
+        scenario, mode, fault_scenario, episode,
+        confidence_source=confidence_source,
+    )
 
 
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
@@ -75,6 +81,9 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     ap.add_argument('--baseline', required=True, help="baseline mode ('b0'..'b4')")
     ap.add_argument('--fault', required=True, help='fault scenario name (default 5종)')
     ap.add_argument('--episode', type=int, required=True, help='episode_id (0 이상)')
+    ap.add_argument('--confidence-source', default='live', dest='confidence_source',
+                    help="신뢰도 소스 — 'live'(기본) 또는 'synthetic:<profile>' "
+                         '(ADR-0050 D7 합성 신뢰도 격리 격자).')
     ap.add_argument('--output-root', default=DEFAULT_OUTPUT_ROOT, dest='output_root')
     ap.add_argument('--backbone', default=DEFAULT_BACKBONE,
                     help=f'intent_llm registry 식별자 (default {DEFAULT_BACKBONE})')
@@ -92,6 +101,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(argv)
     trial = build_trial_from_coords(
         args.scenario, args.baseline, args.fault, args.episode,
+        confidence_source=args.confidence_source,
     )
     bag_dir = trial_bag_dir(args.output_root, trial, args.backbone)
     # run_trial 은 ROS 2 의존 — lazy (module top-level import 회피, host venv 진입 보호).

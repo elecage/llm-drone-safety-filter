@@ -1,0 +1,23 @@
+name: c_stall
+description: |
+  LLM 지연 급증/무응답 모사 — RQ3 지연 독립성 거동 실증 (ADR-0050 D3).
+  정상 발행(c=0.5) → 8s 발행 정지(stall, 신뢰도 채널 무응답) → 발행 재개(c=0.5).
+  기대: tier1 은 stall 구간 내내 *마지막 유효 신뢰도*로 매 주기 setpoint 를
+  계속 발행하고 하한 집행(V_floor=0)이 불변이어야 한다 — LLM 지연이 tier1
+  임계 경로 밖임을 *거동으로* 실증(호스트 절대 타이밍 계측 아님 — ADR-0039 D5).
+  적대 setpoint(track_b worst_user_direct)와 함께 구동해 무응답 중에도 하한이
+  유지되는지 판정.
+publish_rate_hz: 10
+finish_hover_s: 5.0
+segments:
+  - duration_s: 8.0
+    type: constant
+    value: 0.5
+    note: 정상 발행 (warmup) — r ≈ 1.35 m
+  - duration_s: 8.0
+    type: stall
+    note: 발행 정지 — LLM 무응답, tier1 은 마지막 c=0.5 로 계속 동작해야
+  - duration_s: 14.0
+    type: constant
+    value: 0.5
+    note: 발행 재개 — 거동 복귀 확인

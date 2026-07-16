@@ -7,7 +7,7 @@ import pytest
 from tier2_gate.catalog import (
     CATALOG,
     INSPECT_VIEWPOINTS,
-    MOVE_TO_MAX_SPEED_HI,
+    MOVE_TO_DIRECTIONS,
     SKILL_ACTION_CLASS,
     ActionClass,
     Geofence,
@@ -46,8 +46,11 @@ def test_inspect_viewpoints_match_adr_0013_d2():
     assert INSPECT_VIEWPOINTS == frozenset({'overview', 'close', 'top'})
 
 
-def test_max_speed_hi_matches_adr_0013_d2():
-    assert MOVE_TO_MAX_SPEED_HI == 0.5
+def test_move_to_directions_match_sigma_bridge_offsets():
+    """ADR-0049 D1 — sigma_bridge `_DIRECTION_OFFSETS`·ESM Table S4와 동기."""
+    assert MOVE_TO_DIRECTIONS == frozenset(
+        {'forward', 'back', 'left', 'right', 'up', 'down'}
+    )
 
 
 # ---- CC-1 ----
@@ -58,88 +61,104 @@ def test_cc1_unknown_skill_rejected(geofence, known):
     assert 'CC-1' in result.reason
 
 
-# ---- CC-2: move_to ----
+# ---- CC-2: move_to (ADR-0049 D1 — 의미 인자 계약) ----
 
-def test_cc2_move_to_valid(geofence, known):
+def test_cc2_move_to_target_id_valid(geofence, known):
+    result = validate_command(
+        'move_to', {'target_id': 'sofa'},
+        geofence=geofence, known_objects=known,
+    )
+    assert result.valid, result.reason
+
+
+def test_cc2_move_to_direction_valid(geofence, known):
+    result = validate_command(
+        'move_to', {'direction': 'forward'},
+        geofence=geofence, known_objects=known,
+    )
+    assert result.valid, result.reason
+
+
+def test_cc2_move_to_unknown_target_rejected(geofence, known):
+    """콘텐츠 검사 — inspect 와 동일 집합. 환각 대체 대상 차단이 move 에도 대칭."""
+    result = validate_command(
+        'move_to', {'target_id': 'banana'},
+        geofence=geofence, known_objects=known,
+    )
+    assert not result.valid
+    assert 'known_objects' in result.reason
+
+
+def test_cc2_move_to_coordinate_string_target_rejected(geofence, known):
+    """감사 실측 — 좌표 문자열 위장 target_id ("(-4.00, 3.00, 2.90)") 는
+    장면 미등록이라 콘텐츠 검사가 거부 (지오펜스 위반 좌표 밀반입 차단)."""
+    result = validate_command(
+        'move_to', {'target_id': '(-4.00, 3.00, 2.90)'},
+        geofence=geofence, known_objects=known,
+    )
+    assert not result.valid
+
+
+def test_cc2_move_to_invalid_direction_rejected(geofence, known):
+    result = validate_command(
+        'move_to', {'direction': 'sideways'},
+        geofence=geofence, known_objects=known,
+    )
+    assert not result.valid
+    assert 'direction' in result.reason
+
+
+def test_cc2_move_to_position_categorically_rejected(geofence, known):
+    """ADR-0049 D1 — 좌표는 스키마 밖. 지오펜스 안 유효 좌표라도 거부."""
     result = validate_command(
         'move_to',
         {'position': (0.0, 0.0, 1.0), 'max_speed': 0.3},
         geofence=geofence,
         known_objects=known,
     )
-    assert result.valid, result.reason
-
-
-def test_cc2_move_to_outside_geofence(geofence, known):
-    result = validate_command(
-        'move_to',
-        {'position': (5.0, 0.0, 1.0), 'max_speed': 0.3},
-        geofence=geofence,
-        known_objects=known,
-    )
-    assert not result.valid
-    assert 'geofence' in result.reason
-
-
-def test_cc2_move_to_speed_above_max(geofence, known):
-    result = validate_command(
-        'move_to',
-        {'position': (0.0, 0.0, 1.0), 'max_speed': 0.6},
-        geofence=geofence,
-        known_objects=known,
-    )
-    assert not result.valid
-    assert 'max_speed' in result.reason
-
-
-def test_cc2_move_to_negative_speed(geofence, known):
-    result = validate_command(
-        'move_to',
-        {'position': (0.0, 0.0, 1.0), 'max_speed': -0.1},
-        geofence=geofence,
-        known_objects=known,
-    )
-    assert not result.valid
-
-
-def test_cc2_move_to_missing_position(geofence, known):
-    result = validate_command(
-        'move_to', {'max_speed': 0.3},
-        geofence=geofence, known_objects=known,
-    )
     assert not result.valid
     assert 'position' in result.reason
 
 
-def test_cc2_move_to_position_not_3tuple(geofence, known):
+def test_cc2_move_to_position_alongside_target_rejected(geofence, known):
+    """position 이 target_id 와 함께 와도 거부 — 좌표 밀반입 금지."""
     result = validate_command(
         'move_to',
-        {'position': (0.0, 0.0), 'max_speed': 0.3},
+        {'target_id': 'sofa', 'position': (0.0, 0.0, 1.0)},
         geofence=geofence,
         known_objects=known,
     )
     assert not result.valid
 
 
-def test_cc2_move_to_speed_must_be_numeric(geofence, known):
+def test_cc2_move_to_neither_target_nor_direction_rejected(geofence, known):
+    result = validate_command(
+        'move_to', {}, geofence=geofence, known_objects=known,
+    )
+    assert not result.valid
+    assert 'exactly one' in result.reason
+
+
+def test_cc2_move_to_both_target_and_direction_rejected(geofence, known):
     result = validate_command(
         'move_to',
-        {'position': (0.0, 0.0, 1.0), 'max_speed': '0.3'},
+        {'target_id': 'sofa', 'direction': 'forward'},
         geofence=geofence,
         known_objects=known,
     )
     assert not result.valid
 
 
-def test_cc2_move_to_speed_bool_rejected(geofence, known):
-    """isinstance(True, int) 함정 — bool은 명시적으로 거부."""
+def test_cc2_move_to_target_class_artifact_ignored(geofence, known):
+    """감사 실측 210건 형태 — parser 부산물 target_class 는 검증 없이 무시
+    (ask_user options 필수화 아티팩트의 재발 방지, ADR-0049 D1)."""
     result = validate_command(
         'move_to',
-        {'position': (0.0, 0.0, 1.0), 'max_speed': True},
+        {'target_class': 'cup', 'target_id': 'mug'},
         geofence=geofence,
         known_objects=known,
     )
-    assert not result.valid
+    assert result.valid, result.reason
 
 
 # ---- CC-2: inspect ----
@@ -215,6 +234,18 @@ def test_cc2_ask_user_empty_options_ok(geofence, known):
     assert result.valid
 
 
+def test_cc2_ask_user_no_options_key_ok(geofence, known):
+    """ADR-0013 Amendment 2026-07-13 — question-only 계약. 실 프롬프트/parser 는
+    options 를 아예 채우지 않으므로(question 전용) 키 부재를 accept."""
+    result = validate_command(
+        'ask_user',
+        {'question': 'Confirm?'},
+        geofence=geofence,
+        known_objects=known,
+    )
+    assert result.valid, result.reason
+
+
 def test_cc2_ask_user_empty_question(geofence, known):
     result = validate_command(
         'ask_user',
@@ -248,13 +279,12 @@ def test_cc2_ask_user_options_mixed_types(geofence, known):
 # ---- extra keys forward compat ----
 
 def test_cc2_move_to_extra_keys_ignored(geofence, known):
-    """move_to 의 인자 검증은 position/max_speed 만 — 미래 키 (예: yaw, hint)는 무시.
-
-    A4-2 단계에서 추가 인자 도입 시 catalog 변경 없이 통과해야 함.
+    """move_to 의 인자 검증은 target_id/direction/position 만 — 미래 키 (예: yaw,
+    hint)는 무시. A4-2 단계에서 추가 인자 도입 시 catalog 변경 없이 통과해야 함.
     """
     result = validate_command(
         'move_to',
-        {'position': (0.0, 0.0, 1.0), 'max_speed': 0.3, 'yaw': 1.57, 'hint': 'fast'},
+        {'target_id': 'sofa', 'yaw': 1.57, 'hint': 'fast'},
         geofence=geofence,
         known_objects=known,
     )
@@ -317,3 +347,12 @@ def test_geofence_degenerate_zero_volume_allowed():
     gf = Geofence(xmin=1.0, xmax=1.0, ymin=-1.0, ymax=1.0, zmin=0.0, zmax=1.0)
     assert gf.contains((1.0, 0.0, 0.5))
     assert not gf.contains((1.01, 0.0, 0.5))
+
+
+# ---- ADR-0049 계약 호환 — 게이트 수용 형태 ⊆ sigma_bridge 처리 형태 ----
+
+def test_move_to_directions_sync_with_sigma_bridge_offsets():
+    """게이트가 수용하는 direction 토큰은 sigma_bridge 가 전부 해소 가능해야
+    함 (ADR-0049 D1/D2 — 게이트 스키마 ⊆ sigma_bridge 수용 범위)."""
+    helpers = pytest.importorskip('intent_sigma_bridge.sigma_bridge_helpers')
+    assert MOVE_TO_DIRECTIONS == frozenset(helpers._DIRECTION_OFFSETS)
